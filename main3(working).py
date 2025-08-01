@@ -11,13 +11,16 @@ def limpiar_encabezados_y_guardar(input_path: str, output_path: str = "remates_l
         r"1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS",
         r"1640\s+CITAN\s+A\s+REUNIÓN\s+INSTITUCIONES",
         r"---\s+PÁGINA\s+\d+\s+---",
-        r"\b(?:LUNES|MARTES|MIÉRCOLES|JUEVES|VIERNES|SÁBADO|DOMINGO)\s+\d{1,2}\s+DE\s+[A-ZÁÉÍÓÚÑ]+\s+DE\s+\d{4}",
+        r"\b(?:LUNES|MARTES|MIÉRCOLES|JUEVES|VIERNES|SÁBADO|DOMINGO)\s+\d{1,2}\s+DE\s+[A-ZÁÉÍÓÚÑ]+\s+DE\s+\d{4}",    #ESATS BORRANDO LAS FECHAS CUERPO DEL REMATE
         r"\bECONÓMICOS\s+CLASIFICADOS\b",
         r"\n{2,}\s*\d{1,}\s*\n{2,}"
     ]
 
     for patron in patrones:
         texto = re.sub(patron, '\n\n', texto, flags=re.IGNORECASE)
+
+    # ✨ Nuevo paso: unir palabras cortadas por guión + salto de línea
+    texto = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', texto)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(texto)
@@ -61,22 +64,19 @@ def extraer_parrafos_remates(texto: str) -> list[str]:
 
 
 def procesar_remates(input_path: str, archivo_final: str = "remates_final.txt") -> None:
-    # Paso 1: limpiar encabezados
     limpiar_encabezados_y_guardar(input_path)
 
-    # Paso 2: leer el archivo limpio
     with open("remates_limpio.txt", "r", encoding="utf-8") as f:
         texto_limpio = f.read()
 
-    # Paso 3: extraer párrafos
     parrafos = extraer_parrafos_remates(texto_limpio)
 
-    # Paso 4: guardar resultados
     with open(archivo_final, "w", encoding="utf-8") as f:
         for i, p in enumerate(parrafos, 1):
             f.write(f"### REMATE {i} ###\n{p}\n\n")
 
     print(f"Archivo final con remates guardado en: {archivo_final}")
+
 
 # Ejecutar el pipeline completo
 procesar_remates("remates_extraidos.txt")
