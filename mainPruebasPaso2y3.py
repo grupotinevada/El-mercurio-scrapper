@@ -1,28 +1,25 @@
-import paso1_copy
 import paso2_copy
 import paso3_copy
 import os
 import uuid
 from datetime import datetime
+import time
 
 # --- Configuración del logger centralizado ---
 from logger import get_logger
-logger = get_logger("orquestador", log_dir="logs", log_file="orquestador.log")
+logger = get_logger("orquestador_test", log_dir="logs", log_file="orquestador_test.log")
 
-logger.info("===== INICIO DEL PROCESO =====")
-
+logger.info("===== INICIO DEL PROCESO (PRUEBA PASO 2 → PASO 3) =====")
+start_time = time.time()  # <-- Inicio del timer
 try:
-    # --- PASO 1: Extracción Web ---
-    logger.info("=" * 20 + " INICIANDO PASO 1: EXTRACCIÓN WEB " + "=" * 20)
-    ruta_txt_bruto = paso1_copy.run_extractor()
-
-    if not ruta_txt_bruto:
-        logger.error("PASO 1 FALLÓ - No se generó archivo TXT. Abortando.")
+    # --- PASO 2: Limpieza y Separación ---
+    # Cambia esta ruta al TXT que quieres usar para pruebas
+    ruta_txt_bruto = "tests/remates_prueba.txt"
+    
+    if not os.path.exists(ruta_txt_bruto):
+        logger.error(f"No se encontró el archivo de prueba: {ruta_txt_bruto}")
     else:
-        logger.info(f"PASO 1 completado. Archivo generado: {ruta_txt_bruto}")
-
-        # --- PASO 2: Limpieza y Separación ---
-        logger.info("=" * 20 + " INICIANDO PASO 2: LIMPIEZA DE TEXTO " + "=" * 20)
+        logger.info(f"Usando archivo de prueba: {ruta_txt_bruto}")
         ruta_json_separado = paso2_copy.procesar_remates(ruta_txt_bruto)
 
         if not ruta_json_separado:
@@ -31,7 +28,6 @@ try:
             logger.info(f"PASO 2 completado. Archivo generado: {ruta_json_separado}")
 
             # --- PASO 3: Procesamiento con IA ---
-            logger.info("=" * 20 + " INICIANDO PASO 3: EXTRACCIÓN CON IA " + "=" * 20)
             ruta_json_final, ruta_excel_final = paso3_copy.run_processor(ruta_json_separado)
 
             if ruta_json_final and ruta_excel_final:
@@ -49,21 +45,20 @@ try:
                 os.rename(ruta_excel_final, nuevo_excel)
 
                 # Eliminar temporales
-                for tmp_file in [ruta_txt_bruto, ruta_json_separado]:
-                    try:
-                        if os.path.exists(tmp_file):
-                            os.remove(tmp_file)
-                            logger.info(f"Archivo temporal eliminado: {tmp_file}")
-                    except Exception as e:
-                        logger.warning(f"No se pudo eliminar {tmp_file}: {e}")
-
+                try:
+                    if os.path.exists(ruta_json_separado):
+                        os.remove(ruta_json_separado)
+                        logger.info(f"Archivo temporal eliminado: {ruta_json_separado}")
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar {ruta_json_separado}: {e}")
+                elapsed_time = time.time() - start_time  # <-- Tiempo total
                 logger.info(f"PASO 3 completado.")
                 logger.info(f"Archivos finales guardados en 'outputs':\n  - {nuevo_json}\n  - {nuevo_excel}")
-                logger.info("🎉 ¡PROCESO FINALIZADO CON ÉXITO! 🎉")
+                logger.info(f"🎉 ¡PROCESO FINALIZADO CON ÉXITO! Tiempo total: {elapsed_time:.2f} segundos 🎉")
             else:
                 logger.error("PASO 3 FALLÓ - No se generaron archivos finales")
 
 except Exception as e:
-    logger.exception(f"Error inesperado en el orquestador: {e}")
+    logger.exception(f"Error inesperado en el orquestador de prueba: {e}")
 
-logger.info("===== FIN DEL PROCESO =====\n")
+logger.info("===== FIN DEL PROCESO DE PRUEBA =====\n")
