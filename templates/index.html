@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Extractor de Remates</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    #progress-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      z-index: 1050; /* Encima de todo */
+      display: none; /* Oculto por defecto */
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      color: white;
+    }
+    #progress-percentage {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-top: 1rem;
+    }
+    #progress-message {
+      font-size: 1rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body class="text-light d-flex align-items-center justify-content-center min-vh-100" style="background-color: #d4d4d4;">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-6 col-md-8">
+        <div class="card bg shadow">
+          <div class="card-body">
+            <h3 class="card-title text-center mb-4">Extractor de Remates</h3>
+
+            <div class="mb-3">
+              <label for="url" class="form-label">URL del Mercurio</label>
+              <input type="text" class="form-control" id="url" placeholder="URL El Mercurio" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="paginas" class="form-label">Páginas a procesar</label>
+              <input type="number" class="form-control" id="paginas" placeholder="Número de páginas" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="usuario" class="form-label">Usuario</label>
+              <input type="text" class="form-control" id="usuario" value="barbara@grupohouse.cl" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="password" class="form-label">Contraseña</label>
+              <input type="password" class="form-control" id="password" value="Fliphouse" required>
+            </div>
+
+            <div class="d-grid">
+              <button class="btn btn-outline-primary fw-bold" id="submitBtn" onclick="enviar()">Procesar</button>
+            </div>
+
+            <p id="status" class="mt-3 text-center fw-bold"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="progress-overlay">
+    <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
+      <span class="visually-hidden">Cargando...</span>
+    </div>
+    <div id="progress-percentage">0%</div>
+    <div id="progress-message">Iniciando...</div>
+  </div>
+
+<script>
+
+  let currentPercentage = 0;
+  let targetPercentage = 0;
+  let progressInterval = null;
+  
+  function actualizarMensajeUI(msg, tipo = 'info') {
+    const statusElement = document.getElementById('status');
+    statusElement.textContent = msg;
+
+    // Cambiar clases según tipo de mensaje
+    let clase = 'mt-3 text-center fw-bold text-light';
+    if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
+    else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
+    else if (tipo === 'warning') clase = 'mt-3 text-center fw-bold text-warning';
+
+    statusElement.className = clase;
+  }
+
+  async function enviar() {
+    const submitButton = document.getElementById('submitBtn');
+
+    const data = {
+      url: document.getElementById('url').value,
+      paginas: document.getElementById('paginas').value,
+      usuario: document.getElementById('usuario').value,
+      password: document.getElementById('password').value
+    };
+
+    submitButton.disabled = true;
+    actualizarMensajeUI('Iniciando proceso...');
+    actualizarProgreso(0, 'Validando datos...'); // Muestra el spinner
+
+    try {
+        const response = await window.pywebview.api.procesar_formulario(data);
+        if (!response.success) {
+
+            actualizarMensajeUI(response.message, 'error');
+            ocultarProgreso();
+            habilitarBoton()
+        } else {
+
+        }
+        } catch (e) {
+        actualizarMensajeUI('Error de comunicación con el backend.', 'error');
+        ocultarProgreso(); // Oculta en caso de error de comunicación
+        habilitarBoton()
+        console.error(e);
+        } finally {
+
+        }
+    }
+
+    function habilitarBoton() {
+      document.getElementById('submitBtn').disabled = false;
+    }
+
+  function actualizarProgreso(porcentaje, mensaje) {
+    const overlay = document.getElementById('progress-overlay');
+    const percentageEl = document.getElementById('progress-percentage');
+    const messageEl = document.getElementById('progress-message');
+
+    overlay.style.display = 'flex';
+    messageEl.textContent = mensaje; // El mensaje sí se actualiza al instante
+
+    targetPercentage = porcentaje; // Guardamos el nuevo objetivo
+
+    // Si ya hay una animación corriendo, la detenemos para empezar la nueva
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
+
+    // Si no hemos llegado al objetivo, iniciamos el contador animado
+    if (currentPercentage < targetPercentage) {
+      progressInterval = setInterval(() => {
+        if (currentPercentage < targetPercentage) {
+          currentPercentage++; // Subimos el porcentaje de 1 en 1
+          percentageEl.textContent = `${Math.round(currentPercentage)}%`;
+        } else {
+          // Cuando llegamos al objetivo, detenemos el intervalo
+          clearInterval(progressInterval);
+          progressInterval = null;
+        }
+      }, 15); // ⬅️ Puedes ajustar la velocidad aquí (un número más bajo es más rápido)
+    }
+  }
+
+    function ocultarProgreso() {
+    const overlay = document.getElementById('progress-overlay');
+    overlay.style.display = 'none';
+
+    // Detenemos cualquier animación que pudiera quedar
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+    // Reseteamos los contadores para la próxima vez
+    currentPercentage = 0;
+    targetPercentage = 0;
+  }
+</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

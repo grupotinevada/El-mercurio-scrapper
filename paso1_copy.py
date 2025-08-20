@@ -1,31 +1,34 @@
 # paso1.py - Encapsulado para uso desde otros módulos
 # EXTRACTOR DE REMATES JUDICIALES
 
-def run_extractor():
+# pégalo en paso1.py
+import os
+import sys
+import time
+from datetime import datetime
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import (
+    TimeoutException,
+    StaleElementReferenceException,
+    ElementClickInterceptedException,
+    WebDriverException,
+)
+
+
+def run_extractor( url: str, paginas: int, usuario:str, password:str):
     from logger import get_logger, log_section, dbg
 
     logger = get_logger("paso1", log_dir="logs", log_file="paso1.log")
     logger.info("Ejecutando Paso 1...")
 
-    import os
-    import sys
-    import time
-    from datetime import datetime
 
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.common.keys import Keys
-    from selenium.common.exceptions import (
-        TimeoutException,
-        NoSuchElementException,
-        StaleElementReferenceException,
-        ElementClickInterceptedException,
-        WebDriverException,
-    )
 
     # --------------------------------------------------------------------------
     # CONFIGURACIÓN DEL NAVEGADOR
@@ -41,22 +44,19 @@ def run_extractor():
     driver = webdriver.Chrome(service=service, options=chrome_options)
     wait = WebDriverWait(driver, 25)
 
-    URL = "https://digital.elmercurio.com/2025/08/10/F/S64IHN2V#zoom=page-width"
-    EMAIL = "barbara@grupohouse.cl"
-    PASSWORD = "Fliphouse"
-    PAGINAS_A_PROCESAR = 5
+    URL = url
+    EMAIL = usuario
+    PASSWORD = password
+    PAGINAS_A_PROCESAR = paginas
     OUTPUT_FILE = "remates_extraidos.txt"
     DEBUG_SCREENSHOTS = True
 
     def modo_predeterminado():
         marco_horizontal = "═" * 50
-        logger.info("\n╔%s╗", marco_horizontal)
-        logger.info("║         🔨  Modo de extracción predeterminado         ║")
-        logger.info("╠%s╣", marco_horizontal)
-        logger.info("║   Se usará la opción:                                 ║")
-        logger.info("║   2. Extraer texto directamente desde HTML           ║")
-        logger.info("╚%s╝", marco_horizontal)
-        input("Presione ENTER para comenzar...")
+        logger.info(f"\n{marco_horizontal}\n")
+        logger.info("Empezando el proceso de extracción de remates judiciales...")
+        logger.info(f"Datos de entrada:\n URL: {URL}, \n Usuario: {EMAIL}, \n Páginas a procesar: {PAGINAS_A_PROCESAR}")
+        
 
     modo_predeterminado()
 
@@ -124,8 +124,11 @@ def run_extractor():
         username_field = wait.until(EC.element_to_be_clickable((By.ID, "txtUsername")))
         password_field = driver.find_element(By.ID, "txtPassword")
         logger.info("🔑 Ingresando credenciales...")
+        time.sleep(0.5)
         username_field.send_keys(EMAIL)
+        time.sleep(0.5)
         password_field.send_keys(PASSWORD)
+        time.sleep(0.5)
         login_button = driver.find_element(By.ID, "gopram")
         driver.execute_script("arguments[0].click();", login_button)
         logger.info("✅ Login enviado. Esperando a que desaparezca el modal...")
@@ -165,6 +168,7 @@ def run_extractor():
                 try:
                     logger.info("   🔍 Buscando el contenedor #viewer y .textLayer...")
                     viewer_div = wait.until(EC.presence_of_element_located((By.ID, "viewer")))
+                    time.sleep(0.5)
                     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#viewer .textLayer")))
                 except Exception as e:
                     logger.error(f"❌ No se encontró viewer/textLayer: {e}")
@@ -213,7 +217,8 @@ def run_extractor():
             pass
         logger.info(f"✅ Proceso completado. Texto guardado en: {OUTPUT_FILE}")
 
-    input(f"\n📄 Revisa el archivo '{OUTPUT_FILE}', haz cambios si es necesario.\nPresiona ENTER para continuar... ")
+    
+    logger.info(f"✅ Previsualización finalizada. Continuando con el siguiente paso.")
     return OUTPUT_FILE
 
 

@@ -143,7 +143,7 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
 from dotenv import load_dotenv
 import os
 
-def run_processor(input_json_path: str, output_prefix: str = "remates_final"):
+def run_processor(cancel_event, input_json_path: str, progress_callback, output_prefix: str = "remates_final"):
     load_dotenv()
     """
     Orquesta el proceso completo de limpieza, extracción con IA y guardado.
@@ -175,14 +175,25 @@ def run_processor(input_json_path: str, output_prefix: str = "remates_final"):
     remates_limpios = funcion_limpieza_final(remates_iniciales)
     
     resultados = []
+    #calculo % etapa 3
+    total_remates = len(remates_limpios)
+    progreso_base_etapa3 = 66.6
+    peso_total_etapa3 = 33.3 # (99.9 - 66.6)
+    
     total_tokens_usados = 0
     total_costo_usd = 0
 
     logger.info("🏁 - Comienzo del pipeline de extracción con IA")
 
-    for remate in remates_limpios:  #5 PARA PRUEBAS
+    for i, remate in enumerate(remates_limpios):  #5 PARA PRUEBAS
         logger.info("-" * 50)
         logger.info(f"Procesando remate ID {remate['id_remate']}...")
+        
+        #calculo %
+        progreso_en_etapa = ((i + 1) / total_remates) * peso_total_etapa3
+        progreso_total_actual = progreso_base_etapa3 + progreso_en_etapa
+        mensaje_progreso = f"Etapa 3: Analizando remate {i + 1} de {total_remates}"
+        progress_callback(progreso_total_actual, mensaje_progreso)
         
         resultado_ia = extraer_datos_remate(client, MODEL_ENGINE, remate["remate_limpio"])
         
