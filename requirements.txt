@@ -1,50 +1,7 @@
-playwright
+selenium
 pandas
-necesito que leas el txt y me extraigas los siguientes datos de los 80 remates:
-
-
-
-id_remate
-
-nombre_propiedad
-
-proveedor_compra
-
-region
-
-comuna
-
-direccion
-
-tipo_propiedad
-
-villa_barrio_condominio
-
-postura_minima_uf
-
-postura_minima_clp
-
-forma_pago_garantia
-
-garantia_porcentaje
-
-fecha_pago_saldo_remate
-
-diario (siempre es "el mercurio")
-
-corte
-
-tribunal
-
-causa
-
-fecha_remate
-
-comentario{ link_zoom,comentario, fecha_hora_remate}
-
-
-
-y guardamelo en un excel, no lo hagas con codigo, hazlo tú
-
-
-
+pywebview
+openai
+colorama
+python-dotenv
+openpyxl

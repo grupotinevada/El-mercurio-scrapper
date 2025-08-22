@@ -221,7 +221,6 @@ def limpiar_encabezados_y_guardar(
     if output_path:
         logger.info("Limpieza terminada")
         
-
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(texto_final)
             
@@ -232,7 +231,10 @@ def limpiar_encabezados_y_guardar(
         
         logger.info(f"✅ Texto limpio y separado guardado en: {output_path}")
 
-    return texto_final
+        with open(output_path, "r", encoding="utf-8") as f:
+            texto_modificado = f.read()
+        
+    return texto_modificado
 
 def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remates_separados.json") -> None:
     logger.info(f"Procesando archivo de remates: {input_path}")

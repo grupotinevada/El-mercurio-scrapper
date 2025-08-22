@@ -20,7 +20,7 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException,
     WebDriverException,
 )
-
+import tempfile
 
 def run_extractor( url: str, paginas: int, usuario:str, password:str):
     from logger import get_logger, log_section, dbg
@@ -30,17 +30,24 @@ def run_extractor( url: str, paginas: int, usuario:str, password:str):
 
 
 
-    # --------------------------------------------------------------------------
-    # CONFIGURACIÓN DEL NAVEGADOR
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# CONFIGURACIÓN DEL NAVEGADOR
+# --------------------------------------------------------------------------
     chrome_options = Options()
+
+    # 1. Creas la ruta única para el perfil (esto está perfecto)
+    user_data_dir = os.path.join(tempfile.gettempdir(), f"chrome_profile_{os.getpid()}")
+
+    # 2. Le dices a Chrome que USE esa ruta 
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir}") # <--- ¡ESTA ES LA LÍNEA QUE FALTABA!
+
+    # El resto de tu configuración está bien
     chrome_options.add_argument("--start-maximized")
-    service = Service(log_path="logs/chromedriver.log")
     chrome_options.add_argument("--log-level=3")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])  # Quita WARNINGs de absl
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])  # Opcional, quita banner "Chrome is being controlled...
-    
-    
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+
+    service = Service(log_path="logs/chromedriver.log")
     driver = webdriver.Chrome(service=service, options=chrome_options)
     wait = WebDriverWait(driver, 25)
 

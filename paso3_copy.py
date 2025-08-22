@@ -70,8 +70,8 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
         completion = client.chat.completions.create(
             model=engine,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,# NO SE PERMITE CAMBIAR LA TEMPERATURA EN LOS MODELOS 5
-            max_tokens=1024,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
+            temperature=0.2,# NO SE PERMITE CAMBIAR LA TEMPERATURA EN LOS MODELOS 5
+            max_tokens=2048,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
             # max_completion_tokens=8192, #para gtp5
             response_format={
                 "type": "json_schema",
@@ -202,11 +202,15 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
             usage = resultado_ia["usage"]
 
             datos["diario"] = "El Mercurio"
-            
+            print("[DEBUG] - DATOS: ", datos)
+            remate_texto = remate["remate_limpio"] if "remate_limpio" in remate else "Sin remate"
+
             resultados.append({
                 "id_remate": remate["id_remate"],
-                **datos
+                **datos,
+                "remate_texto": remate_texto
             })
+            
 
             total_tokens_usados += getattr(usage, "total_tokens", 0)
             costo = calcular_costo(usage, MODEL_ENGINE)
@@ -215,8 +219,8 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
         else:
             logger.warning(f"No se pudo extraer datos para remate ID {remate['id_remate']}")
 
-        logger.info("⏳ Esperando 2 segundos antes del siguiente remate...")
-        time.sleep(2)
+        logger.info("⏳ Esperando 0.8 segundos antes del siguiente remate... (evita saturar api)")
+        time.sleep(0.8)
 
     # --- GUARDADO DE RESULTADOS ---
     json_output_path = f"{output_prefix}.json"
@@ -227,6 +231,20 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
 
     if resultados:
         df = pd.json_normalize(resultados)
+
+        # Paso 1: Obtenemos la lista de todas las columnas
+        columnas = df.columns.tolist()
+        
+        # Paso 2: Eliminamos 'remate_texto' de su posición actual
+        columnas.remove('remate_texto')
+        
+        # Paso 3: Agregamos 'remate_texto' al final de la lista
+        columnas.append('remate_texto')
+        
+        # Paso 4: Reindexamos el DataFrame con el nuevo orden de columnas
+        df = df[columnas]
+        
+        # Guardamos el Excel
         df.to_excel(excel_output_path, index=False)
     else:
         logger.warning("No se generaron resultados, el archivo Excel estará vacío.")
