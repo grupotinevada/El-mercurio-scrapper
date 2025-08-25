@@ -74,8 +74,8 @@ def mostrar_preview_html(file_path: str, cancel_event: threading.Event):
         f"Previsualización - {file_path}",
         "templates/preview.html", # Carga el archivo HTML
         js_api=api,
-        width=1000,
-        height=800,
+        width=1200,
+        height=1000,
         resizable=True
     )
     window_ref.append(window)

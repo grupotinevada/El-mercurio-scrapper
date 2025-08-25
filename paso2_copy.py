@@ -28,9 +28,12 @@ CLAVES_SEPARADORES = [
     r"REMATE:\s+VIG[ÉE]SIMO\s+JUZGADO\s+CI",
     r"REMATE\s+ANTE\s+JUEZ\s+ARBITRO,?",
     r"REMATE[.,]?\s+VIG[ÉE]SIMO\s+SEGUNDO\s+JUZGADO",
-    # Patrón específico para el caso del ID 72 y 78
     r"JUEZ\s+PARTIDOR\s+[A-ZÁÉÍÓÚÑ]+",
-    
+    r"SEGUNDO\s+REMATE\s+PARTICI[ÓO]N",
+    r"ANTE\s+JUEZ\s+PARTIDOR",
+    r"INMUEBLE\s+COMUNA\s+QUILL[ÓO]N\.[A-ZÁÉÍÓÚÑ]",
+    r"LICITACI[ÓO]N\s+REMATE\.\s+CONVENIO",
+    r"CON\s+FECHA\s+.*HORAS",
 ]
 
 
@@ -104,18 +107,27 @@ def pre_separar_remates_fusionados(texto: str) -> str:
     para separarlos de forma segura.
     """
     logger.debug("Buscando y separando remates fusionados (lógica básica)...")
+    bloque_manual = [
+    r"REMATE\b",
+    r"REMATE[:.]?",
+    r"JUEZ PARTIDOR",
+    r"JUEZ ARBITRO",
+    r"LICITACI[ÓO]N\s+REMATE"
+    ]
+    
+    todos_los_inicios = bloque_manual + CLAVES_SEPARADORES
 
-    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b"
+    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b|Secretario.|Secretario"
     patron_email = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     patron_telefono = r'(?:\+56\s?)?[29]\s?\d{4}\s?\d{4}'
-    palabras_inicio = r"(?:REMATE\b|REMATE[:.]?|JUEZ PARTIDOR|JUEZ ARBITRO)"
-
+    palabras_inicio = r"(?:{})".format("|".join(todos_los_inicios))
+    punto_cierre = r"\b(Secretaría.|Secretario.\(a.\)|La Actuaria.|El Actuario.)\b"
 
     patron_fusion = re.compile(
-        f"({palabras_cierre}|{patron_telefono}|{patron_email})"  
+        f"({palabras_cierre}|{patron_telefono}|{patron_email}|{punto_cierre})" + 
         r"(\s+)"                                                 
         f"({palabras_inicio})",                                   
-        flags=re.IGNORECASE
+        
     )
     
     # En lugar de un texto de reemplazo, pasamos la FUNCIÓN 'separador_inteligente'.

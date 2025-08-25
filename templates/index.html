@@ -60,8 +60,11 @@
               <input type="password" class="form-control" id="password" value="Fliphouse" required>
             </div>
 
-            <div class="d-grid">
+            <div class="d-grid gap-2">
               <button class="btn btn-outline-primary fw-bold" id="submitBtn" onclick="enviar()">Procesar</button>
+              <button class="btn btn-outline-secondary fw-bold" id="openFolderBtn" onclick="abrirResultados()">
+                Abrir Carpeta de archivos 📂
+              </button>
             </div>
 
             <p id="status" class="mt-3 text-center fw-bold"></p>
@@ -90,7 +93,7 @@
     statusElement.textContent = msg;
 
     // Cambiar clases según tipo de mensaje
-    let clase = 'mt-3 text-center fw-bold text-light';
+    let clase = 'mt-3 text-center fw-bold text-dark';
     if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
     else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
     else if (tipo === 'warning') clase = 'mt-3 text-center fw-bold text-warning';
@@ -132,6 +135,22 @@
         }
     }
 
+    async function abrirResultados() {
+      try {
+        const response = await window.pywebview.api.abrir_carpeta();
+        console.log(response);
+        if (!response.success) {
+          actualizarMensajeUI(response.message, 'error');
+        } else {
+          actualizarMensajeUI(response.message, 'info');
+        }
+      } catch (e) {
+        actualizarMensajeUI('Error al comunicarse con el backend para abrir la carpeta.', 'error');
+        console.error(e);
+      }
+  }  
+  
+
     function habilitarBoton() {
       document.getElementById('submitBtn').disabled = false;
     }
@@ -146,7 +165,7 @@
 
     targetPercentage = porcentaje; // Guardamos el nuevo objetivo
 
-    // Si ya hay una animación corriendo, la detenemos para empezar la nueva
+
     if (progressInterval) {
       clearInterval(progressInterval);
     }

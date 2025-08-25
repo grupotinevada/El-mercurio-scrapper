@@ -1,15 +1,62 @@
 import webview
 import threading
 import main  # Asegúrate de que main.py exista con la función orquestador_con_datos
+from logger import get_logger, log_section, dbg
+
+logger = get_logger("app", log_dir="logs", log_file="app.log")
 
 cancel_event = threading.Event()
 enable_cleanup = True
 window = None
 
+import sys
+import ctypes
+
+if sys.platform == "win32":
+    # Obtiene el handle de la ventana de la consola
+    hWnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if hWnd:
+        SW_MINIMIZE = 6
+        ctypes.windll.user32.ShowWindow(hWnd, SW_MINIMIZE)
+
 class Api:
     """
     Clase que expone la funcionalidad del backend (Python) al frontend (JavaScript).
     """
+    def abrir_carpeta(self, ruta_carpeta="outputs"):
+        print(f"Intentando abrir la carpeta: {ruta_carpeta}")
+        import os
+        import platform
+        import subprocess
+        """
+        Abre una carpeta en el explorador de archivos del sistema operativo.
+        Por defecto, intenta abrir la carpeta 'resultados'.
+        """
+        try:
+            if not os.path.exists(ruta_carpeta):
+                print(f"La carpeta '{ruta_carpeta}' no existe. Creándola...")
+                os.makedirs(ruta_carpeta)
+                logger.info(f"Carpeta '{ruta_carpeta}' creada.")
+            sistema = platform.system()
+            print("aaaaaaaaaaaa")
+            if sistema == 'Windows':
+                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
+                os.startfile(os.path.abspath(ruta_carpeta))
+            elif sistema == 'Darwin':
+                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
+                subprocess.Popen(['open', os.path.abspath(ruta_carpeta)])
+            elif sistema == 'Linux':
+                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
+                subprocess.Popen(['xdg-open', os.path.abspath(ruta_carpeta)])
+            else:
+                return {'success': False, 'message': f'Error: Sistema operativo no soportado para esta función: {sistema}'}
+            
+            return {'success': True, 'message': f'Carpeta "{ruta_carpeta}" abierta con éxito.'}
+
+        except Exception as e:
+            logger.info(f"Error al intentar abrir la carpeta: {e}")
+            return {'success': False, 'message': f'Ocurrió un error al abrir la carpeta: {e}'}
+
     def procesar_formulario(self, data):
         global cancel_event
         cancel_event.clear()  # Reinicia el evento por si se ejecutó antes
@@ -99,8 +146,8 @@ if __name__ == "__main__":
         "Extractor de Remates",
         "templates/index.html",
         js_api=api,
-        width=650,
-        height=680,
+        width=750,
+        height=780,
         resizable=True
     )
     
