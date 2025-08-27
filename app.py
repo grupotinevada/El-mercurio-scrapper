@@ -1,6 +1,10 @@
 import webview
 import threading
+import os
+import platform
+import subprocess
 import main  # Asegúrate de que main.py exista con la función orquestador_con_datos
+import macal
 from logger import get_logger, log_section, dbg
 
 logger = get_logger("app", log_dir="logs", log_file="app.log")
@@ -20,14 +24,14 @@ if sys.platform == "win32":
         ctypes.windll.user32.ShowWindow(hWnd, SW_MINIMIZE)
 
 class Api:
+
     """
     Clase que expone la funcionalidad del backend (Python) al frontend (JavaScript).
     """
     def abrir_carpeta(self, ruta_carpeta="outputs"):
         print(f"Intentando abrir la carpeta: {ruta_carpeta}")
-        import os
-        import platform
-        import subprocess
+        
+
         """
         Abre una carpeta en el explorador de archivos del sistema operativo.
         Por defecto, intenta abrir la carpeta 'resultados'.
@@ -37,8 +41,14 @@ class Api:
                 print(f"La carpeta '{ruta_carpeta}' no existe. Creándola...")
                 os.makedirs(ruta_carpeta)
                 logger.info(f"Carpeta '{ruta_carpeta}' creada.")
+                
+            ruta_macal = "propiedades_macal"
+            if not os.path.exists(ruta_macal):
+                os.makedirs(ruta_macal)
+                
             sistema = platform.system()
             print("aaaaaaaaaaaa")
+            
             if sistema == 'Windows':
                 print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
                 os.startfile(os.path.abspath(ruta_carpeta))
@@ -56,6 +66,30 @@ class Api:
         except Exception as e:
             logger.info(f"Error al intentar abrir la carpeta: {e}")
             return {'success': False, 'message': f'Ocurrió un error al abrir la carpeta: {e}'}
+        
+    def abrir_carpeta_macal(self):
+        """
+        Abre la carpeta de resultados específica para el extractor de Macal.
+        """
+        ruta_macal = "propiedades_macal"
+        logger.info(f"Intentando abrir la carpeta de Macal: {ruta_macal}")
+        try:
+            # Asegura que la carpeta exista antes de intentar abrirla
+            os.makedirs(ruta_macal, exist_ok=True)
+            sistema = platform.system()
+            if sistema == 'Windows':
+                os.startfile(os.path.abspath(ruta_macal))
+            elif sistema == 'Darwin':
+                subprocess.Popen(['open', os.path.abspath(ruta_macal)])
+            elif sistema == 'Linux':
+                subprocess.Popen(['xdg-open', os.path.abspath(ruta_macal)])
+            else:
+                return {'success': False, 'message': f'Sistema operativo no soportado: {sistema}'}
+            return {'success': True, 'message': f'Carpeta "{ruta_macal}" abierta.'}
+        except Exception as e:
+            logger.error(f"Error al abrir la carpeta de Macal: {e}")
+            return {'success': False, 'message': f'Ocurrió un error al abrir la carpeta: {e}'}
+
 
     def procesar_formulario(self, data):
         global cancel_event
@@ -77,7 +111,7 @@ class Api:
 
             # Lanzar el hilo para procesar sin bloquear la UI
             thread = threading.Thread(
-                target=self._run_proceso,
+                target=self._run_proceso_mercurio,
                 args=(url, num_paginas, usuario, password),
                 daemon=True
             )
@@ -91,8 +125,59 @@ class Api:
         except Exception as e:
             print(f"Ocurrió un error inesperado: {e}")
             return {'success': False, 'message': f'Ocurrió un error inesperado: {e}'}
+        
+        
+    def ejecutar_macal(self):
+        """
+        Lanza la ejecución del extractor de Macal en un hilo separado.
+        """
+        logger.info("Solicitud recibida para ejecutar el extractor de Macal.")
+        try:
+            thread = threading.Thread(target=self._run_proceso_macal, daemon=True)
+            thread.start()
+            return {'success': True, 'message': 'Proceso de Macal iniciado.'}
+        except Exception as e:
+            logger.error(f"Error al iniciar el hilo de Macal: {e}")
+            return {'success': False, 'message': f'Error al iniciar el proceso: {e}'}
 
-    def _run_proceso(self, url, paginas, usuario, password):
+    def _run_proceso_macal(self):
+            """
+            Contiene la lógica para ejecutar el script de Macal y notificar a la UI.
+            """
+            global window
+            logger.info("Iniciando la ejecución de macal.run_extractor...")
+            
+            def progress_callback(porcentaje, mensaje):
+                """Esta función se encargará de enviar el progreso a la interfaz."""
+                if window:
+                    # Escapamos comillas para no romper el string de JavaScript
+                    mensaje_escapado = mensaje.replace("'", "\\'")
+                    window.evaluate_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
+                
+            try:
+                # Define las URLs y el nombre de archivo aquí
+                SEARCH_URL = "https://api-net.macal.cl/api/v1/properties/search"
+                DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
+                OUTPUT_FILENAME = "propiedades_macal" # Carpeta de salida
+                os.makedirs(OUTPUT_FILENAME, exist_ok=True) # Asegura que la carpeta exista
+                output_filename = os.path.join(OUTPUT_FILENAME, "propiedades_macal_final.xlsx")
+
+                # Ejecuta la función principal de tu script
+                macal.run_extractor_macal(SEARCH_URL, DETAILS_URL, output_filename, progress_callback=progress_callback)
+                
+                # Si todo sale bien, notifica a la UI
+                if window:
+                    logger.info("Proceso de Macal finalizado con éxito.")
+                    window.evaluate_js("finalizarProcesoMacal('✅ Proceso Macal completado con éxito!', 'success')")
+
+            except Exception as e:
+                logger.error(f"Error crítico durante la ejecución de Macal: {e}")
+                # Si hay un error, notifica a la UI
+                if window:
+                    mensaje_error = f"Error en el proceso Macal: {e}".replace("'", "\\'")
+                    window.evaluate_js(f"finalizarProcesoMacal('{mensaje_error}', 'error')")
+
+    def _run_proceso_mercurio(self, url, paginas, usuario, password):
         """
         Ejecuta el orquestador y notifica a la UI si hubo cancelación o finalización.
         """

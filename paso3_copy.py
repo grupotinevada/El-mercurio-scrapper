@@ -34,7 +34,81 @@ def generar_prompt_remate(texto_remate: str) -> str:
     """
     Crea el prompt estructurado para la API de OpenAI.
     """ 
-    prompt = f"""Extract all fields from the auction text per schema. Rules: - Infer missing data only if accurate (e.g., comuna "San Bernardo" → region "Región Metropolitana"). No false positives; use null if missing. - Currency: postura_minima_uf = UF or 0 if CLP; postura_minima_clp = CLP or 0 if UF. - Do not invent data. - fecha_remate and comentario.fecha_hora_remate in ISO 8601. - causa = case/rol number only. - comentario.link_zoom = "Necesario contactar" if no link; else extract Zoom ID. - nombre_propiedad and direccion: short, no special characters ("°", "N°"). - Caratulado = bank, financial institution, creditor, or person initiating the lawsuit. - Detect postura_minima_uf by "UF" and decimals; postura_minima_clp by "$" and dots. - tipo_propiedad: departamento, parcela, patio, sitio, casa, terreno, condominio, bodega, galpón, loteo, estacionamiento, oficina. - Auction balance payment date: relative phrase, e.g., "quinto día hábil del remate"(it can be any day, not necessarily the fifth day), do not calculate the date, this field may or may not be present, do not invent, if it does not exist, leave the field empty. - Standardize corte/tribunal names: convert "DÉCIMO SEXTO JUZGADO de santiago" → "16° Juzgado de Santiago"; may appear as "{{Number° (optional)}} Juzgado Civil {{city}}" or "{{Number° (optional)}} Juzgado de Letras {{city}}"; if no number, use "Juzgado de {{city}}". - forma_pago_garantia: Vale Vista Endosable, Vale Vista Nominativo, Transferencia, or Cupón de Pago. could be Precio Contado you must put a * to Precio Contado e.g: Precio Contado*. Auction text:  --- {texto_remate} --- Answer in Spanish."""
+    prompt = f"""
+        EXTRACTOR DE DATOS DE REMATES JUDICIALES
+            Eres un especialista en extracción de datos de remates judiciales chilenos. Tu tarea es extraer información precisa y estructurada del texto proporcionado.
+        REGLAS FUNDAMENTALES
+            NUNCA INVENTAR DATOS - Solo extraer información explícitamente presente
+            PRECISIÓN ABSOLUTA - Mejor campo vacío que dato incorrecto
+            UN OBJETO JSON POR INMUEBLE - Si hay múltiples propiedades, crear array con objetos separados
+            SI EL DATO NO EXISTE EN EL TEXTO, DEJARLO COMO "No se menciona", si el campo es numerico dejarlo como 0
+        
+        ESQUEMA DE EXTRACCIÓN
+        
+        1.- IDENTIFICACIÓN DEL REMATE
+            -causa: Solo el número de rol (formato: "C-1234-2020", "O-567-2023", etc.)
+            -Caratulado: Nombre completo del demandante (banco, institución financiera, acreedor)
+            -corte: Nombre de la corte (ej: "Corte de Apelaciones de Santiago")
+            -tribunal: Tribunal específico formato estandarizado:
+            -Con número: "16° Juzgado Civil de Santiago", "3° Juzgado de Letras de Valparaíso"
+            -Sin número: "Juzgado de Letras de Rancagua"
+            -Convertir ordinales: "DÉCIMO SEXTO" → "16°", "SEGUNDO" → "2°"
+            -si no se menciona, no inferir, dejar el campo "No se menciona"
+        2.- DATOS DE LA PROPIEDAD
+            -tipo_propiedad: SOLO valores permitidos:
+            -departamento | casa | parcela | sitio | terreno | patio | condominio | bodega | galpón | loteo | estacionamiento | oficina
+            -nombre_propiedad: Descripción corta, sin "°" ni "N°"
+            -direccion: Dirección limpia, sin caracteres especiales
+            -villa_barrio_condominio: Nombre de villa, barrio o condominio si se menciona
+            -comuna: Extraer literal del texto
+            -region: Solo inferir si comuna es inequívocamente identificable
+        3.- VALORES MONETARIOS
+            -Reglas de detección:
+            -UF: Presencia de "UF" + números decimales (ej: "2.500,50 UF")
+            -CLP: Símbolo "$" + números con puntos (ej: "$150.000.000")
+            -postura_minima_uf: Valor en UF si existe, "0" si solo hay CLP
+            -postura_minima_clp: Valor en CLP si existe, "0" si solo hay UF
+        4.- FECHAS Y HORARIOS
+            -fecha_remate: Formato ISO 8601 (YYYY-MM-DD)
+            -comentario.fecha_hora_remate: Con hora si disponible (YYYY-MM-DDTHH:MM)
+            -Si no hay fecha/hora específica: null
+        5.- MODALIDADES DE PAGO
+            -forma_pago_garantia: Valores exactos permitidos:
+            -"Vale Vista Endosable" = Sin endoso, no trasferible,
+            -"Vale Vista Nominativo" = Beneficiario final, a nombre del tribunal, trasferible, persona, etc,
+            -"Transferencia",
+            -"Cupón de Pago",
+            -"Precio Contado*" (con asterisco obligatorio),
+            -null si no se especifica.
+            -garantia_porcentaje: Porcentaje numérico de garantía requerida (sin símbolo %)
+            -fecha_pago_saldo_remate:
+            -Copiar frase RELATIVA o LITERAL del texto (ej: "quinto día hábil siguiente al remate", "5to dia hábil siguiente al remate", etc)
+            -NO calcular fechas específicas
+            -null si no aparece
+        6.- INFORMACIÓN COMPLEMENTARIA
+            -diario: Nombre del diario oficial donde se publicó el remate
+            -comentario.link_zoom:
+            -URL completa o ID de Zoom si existe
+            -"Necesario contactar" si no hay enlace
+            -comentario.fecha_hora_remate: Fecha y hora específica del remate si disponible
+        7.- CASOS ESPECIALES
+            7.1 .-Múltiples Inmuebles
+                Si un remate incluye varios inmuebles (ej: departamento + estacionamiento):
+                Crear objeto separado para cada propiedad
+                Mantener datos comunes (causa, tribunal, fecha, etc.)
+                Diferenciar en tipo_propiedad y descripción
+            7.2 .- Datos Faltantes
+                String fields: null
+                Campos numéricos: usar 0 para garantia_porcentaje si no se especifica
+                Campos requeridos siempre deben tener valor o null
+                Inferencias Permitidas (ÚNICAMENTE)
+                Comuna → Región (solo si es inequívoca)
+                Abreviaciones conocidas de tribunales
+                Conversión de números ordinales a formato estándar
+        8.- INSTRUCCIÓN FINAL
+            -Procesa el siguiente texto de remate y devuelve ÚNICAMENTE el JSON resultante, en español, siguiendo todas las reglas establecidas:
+        {texto_remate}
+    """
 
     return prompt.strip()
 
@@ -58,6 +132,7 @@ def calcular_costo(usage, engine):
     completion_cost = (completion_tokens / 1_000_000) * precios["completion"]
     return prompt_cost + completion_cost
 
+
 def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
     """
     Llama a la API de OpenAI para extraer los datos estructurados.
@@ -71,7 +146,7 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
             model=engine,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,# NO SE PERMITE CAMBIAR LA TEMPERATURA EN LOS MODELOS 5
-            max_tokens=2048,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
+            max_tokens=4096,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
             # max_completion_tokens=8192, #para gtp5
             response_format={
                 "type": "json_schema",
@@ -80,44 +155,54 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "nombre_propiedad": {"type": ["string", "null"]},
-                            "Caratulado": {"type": ["string", "null"]},
-                            "region": {"type": ["string", "null"]},
-                            "comuna": {"type": ["string", "null"]},
-                            "direccion": {"type": ["string", "null"]},
-                            "tipo_propiedad": {"type": ["string", "null"]},
-                            "villa_barrio_condominio": {"type": ["string", "null"]},
-                            "postura_minima_uf": {"type": "string"},
-                            "postura_minima_clp": {"type": "string"},
-                            "forma_pago_garantia": {"type": ["string", "null"]},
-                            "garantia_porcentaje": {"type": "number"},
-                            "fecha_pago_saldo_remate": {"type": ["string", "null"]},
-                            "diario": {"type": ["string", "null"]},
-                            "corte": {"type": ["string", "null"]},
-                            "tribunal": {"type": ["string", "null"]},
-                            "causa": {"type": ["string", "null"]},
-                            "fecha_remate": {"type": ["string", "null"]},
-                            "comentario": {
-                                "type": "object",
-                                "properties": {
-                                    "link_zoom": {"type": ["string", "null"]},
-                                    "fecha_hora_remate": {"type": ["string", "null"]}
-                                },
-                                "required": ["link_zoom", "fecha_hora_remate"]
+                            "remates": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "nombre_propiedad": {"type": ["string", "null"]},
+                                        "Caratulado": {"type": ["string", "null"]},
+                                        "region": {"type": ["string", "null"]},
+                                        "comuna": {"type": ["string", "null"]},
+                                        "direccion": {"type": ["string", "null"]},
+                                        "tipo_propiedad": {"type": ["string", "null"]},
+                                        "villa_barrio_condominio": {"type": ["string", "null"]},
+                                        "postura_minima_uf": {"type": "string"},
+                                        "postura_minima_clp": {"type": "string"},
+                                        "forma_pago_garantia": {"type": ["string", "null"]},
+                                        "garantia_porcentaje": {"type": "number"},
+                                        "fecha_pago_saldo_remate": {"type": ["string", "null"]},
+                                        "diario": {"type": ["string", "null"]},
+                                        "corte": {"type": ["string", "null"]},
+                                        "tribunal": {"type": ["string", "null"]},
+                                        "causa": {"type": ["string", "null"]},
+                                        "fecha_remate": {"type": ["string", "null"]},
+                                        "comentario": {
+                                            "type": "object",
+                                            "properties": {
+                                                "link_zoom": {"type": ["string", "null"]},
+                                                "fecha_hora_remate": {"type": ["string", "null"]}
+                                            },
+                                            "required": ["link_zoom", "fecha_hora_remate"]
+                                        }
+                                    },
+                                    "required": [
+                                        "nombre_propiedad", "Caratulado", "region", "comuna",
+                                        "direccion", "tipo_propiedad", "villa_barrio_condominio",
+                                        "postura_minima_uf", "postura_minima_clp",
+                                        "forma_pago_garantia", "garantia_porcentaje",
+                                        "fecha_pago_saldo_remate", "diario", "corte", "tribunal",
+                                        "causa", "fecha_remate", "comentario"
+                                    ],
+                                    "additionalProperties": False
+                                }
                             }
                         },
-                        "required": [
-                            "nombre_propiedad", "Caratulado", "region", "comuna",
-                            "direccion", "tipo_propiedad", "villa_barrio_condominio",
-                            "postura_minima_uf", "postura_minima_clp",
-                            "forma_pago_garantia", "garantia_porcentaje",
-                            "fecha_pago_saldo_remate", "diario", "corte", "tribunal",
-                            "causa", "fecha_remate", "comentario"
-                        ],
-                        "additionalProperties": False
+                        "required": ["remates"]
                     }
                 }
-            },
+            }
+
         )
         
         contenido_original = completion.choices[0].message.content
@@ -144,6 +229,7 @@ from dotenv import load_dotenv
 import os
 
 def run_processor(cancel_event, input_json_path: str, progress_callback, output_prefix: str = "remates_final"):
+    
     load_dotenv()
     """
     Orquesta el proceso completo de limpieza, extracción con IA y guardado.
@@ -185,42 +271,54 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
 
     logger.info("🏁 - Comienzo del pipeline de extracción con IA")
 
-    for i, remate in enumerate(remates_limpios):  #5 PARA PRUEBAS
+    for i, remate in enumerate(remates_limpios):
         logger.info("-" * 50)
         logger.info(f"Procesando remate ID {remate['id_remate']}...")
-        
-        #calculo %
+
+        # cálculo % progreso
         progreso_en_etapa = ((i + 1) / total_remates) * peso_total_etapa3
         progreso_total_actual = progreso_base_etapa3 + progreso_en_etapa
         mensaje_progreso = f"Etapa 3: Analizando remate {i + 1} de {total_remates}"
         progress_callback(progreso_total_actual, mensaje_progreso)
-        
+
         resultado_ia = extraer_datos_remate(client, MODEL_ENGINE, remate["remate_limpio"])
-        
-        if "datos" in resultado_ia and "usage" in resultado_ia:
-            datos = resultado_ia["datos"]
-            usage = resultado_ia["usage"]
 
-            datos["diario"] = "El Mercurio"
-            print("[DEBUG] - DATOS: ", datos)
-            remate_texto = remate["remate_limpio"] if "remate_limpio" in remate else "Sin remate"
+        if "datos" in resultado_ia and isinstance(resultado_ia["datos"], dict):
+            lista_propiedades = resultado_ia["datos"].get("remates", [])
+            usage = resultado_ia.get("usage", {})
 
-            resultados.append({
-                "id_remate": remate["id_remate"],
-                **datos,
-                "remate_texto": remate_texto
-            })
-            
+            remate_texto = remate.get("remate_limpio", "Sin remate")
+
+            if len(lista_propiedades) == 1:
+                propiedad = lista_propiedades[0]
+                propiedad["diario"] = "El Mercurio"
+                registro_final = {
+                    "id_remate": remate["id_remate"],
+                    **propiedad,
+                    "remate_texto": remate_texto
+                    }
+                resultados.append(registro_final)
+                logger.info(f"  -> Propiedad '{propiedad.get('nombre_propiedad')}' agregada con ID {remate['id_remate']}.")
+            else:
+                for j, propiedad in enumerate(lista_propiedades, 1):
+                    propiedad["diario"] = "El Mercurio"
+                    id_remate_compuesto = f"{remate['id_remate']}.{j}"
+                    registro_final = {
+                        "id_remate": id_remate_compuesto,
+                        **propiedad,
+                        "remate_texto": remate_texto
+                    }
+                    resultados.append(registro_final)
+                    logger.info(f"  -> Propiedad '{propiedad.get('nombre_propiedad')}' agregada con ID {id_remate_compuesto}.")
 
             total_tokens_usados += getattr(usage, "total_tokens", 0)
-            costo = calcular_costo(usage, MODEL_ENGINE)
-            total_costo_usd += costo
+            total_costo_usd += calcular_costo(usage, MODEL_ENGINE)
 
         else:
             logger.warning(f"No se pudo extraer datos para remate ID {remate['id_remate']}")
 
-        logger.info("⏳ Esperando 0.8 segundos antes del siguiente remate... (evita saturar api)")
         time.sleep(0.8)
+
 
     # --- GUARDADO DE RESULTADOS ---
     json_output_path = f"{output_prefix}.json"
@@ -231,17 +329,9 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
 
     if resultados:
         df = pd.json_normalize(resultados)
-
-        # Paso 1: Obtenemos la lista de todas las columnas
         columnas = df.columns.tolist()
-        
-        # Paso 2: Eliminamos 'remate_texto' de su posición actual
         columnas.remove('remate_texto')
-        
-        # Paso 3: Agregamos 'remate_texto' al final de la lista
         columnas.append('remate_texto')
-        
-        # Paso 4: Reindexamos el DataFrame con el nuevo orden de columnas
         df = df[columnas]
         
         # Guardamos el Excel
@@ -262,8 +352,28 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
 # ==================== BLOQUE DE EJECUCIÓN DIRECTA ====================
 
 if __name__ == "__main__":
-    # Esta parte se ejecuta solo si corres 'python paso3.py' directamente
-    # Sirve para probar el módulo de forma aislada
-    archivo_entrada_paso2 = "remates_separados.json"
+    # Esta parte se ejecuta solo si corres el script directamente
+    archivo_entrada_paso2 = "remates_separados.json" # Asegúrate que este archivo exista
+    
+    # Crear un archivo de entrada de ejemplo si no existe
+    if not os.path.exists(archivo_entrada_paso2):
+        logger.info(f"Creando archivo de prueba '{archivo_entrada_paso2}'...")
+        mock_data = [
+            {"id_remate": 1, "remate": "Texto de un remate simple para una casa."},
+            {"id_remate": 2, "remate": "Texto de un remate para dos propiedades: un depto y una bodega."}
+        ]
+        with open(archivo_entrada_paso2, "w", encoding="utf-8") as f:
+            json.dump(mock_data, f)
+            
     logger.info(f"Ejecutando el Paso 3 en modo de prueba con el archivo: {archivo_entrada_paso2}")
-    run_processor(archivo_entrada_paso2)
+    
+    ### CORRECCIÓN 3: Se añaden argumentos dummy para que la función se pueda llamar.
+    mock_cancel_event = None
+    def mock_progress_callback(progress, message):
+        print(f"  [Callback] {progress:.1f}% - {message}")
+
+    run_processor(
+        cancel_event=mock_cancel_event,
+        input_json_path=archivo_entrada_paso2,
+        progress_callback=mock_progress_callback
+    )
