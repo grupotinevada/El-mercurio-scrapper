@@ -39,21 +39,19 @@ def cleanup_temp_files(logger, enable_cleanup: bool = True):
             logger.warning(f"No se pudo eliminar {archivo}: {e}")
             
 
-def orquestador_con_datos(url, paginas, usuario, password, cancel_event, enable_cleanup, progress_callback):
+def orquestador_con_datos(url, paginas, cancel_event, enable_cleanup, progress_callback):
     logger = get_logger("main", log_dir="logs", log_file="orquestador.log")
 
     logger.info("===== INICIO DEL PROCESO =====")
     print("Datos recibidos:")
     print(f"URL: {url}")
     print(f"Número de páginas: {paginas}")
-    print(f"Usuario: {usuario}")
-    print(f"Password: {password}")
     logger.info("===== FIN DEL PROCESO =====\n")
     try:
         # --- PASO 1: Extracción Web ---
         logger.info("=" * 20 + " INICIANDO PASO 1: EXTRACCIÓN WEB " + "=" * 20)
         progress_callback(5, 'Etapa 1: Extrayendo datos web...')
-        ruta_txt_bruto = paso1_copy.run_extractor(url, paginas, usuario, password)
+        ruta_txt_bruto = paso1_copy.run_extractor(url, paginas)
                 
         if not ruta_txt_bruto:
             logger.error("PASO 1 FALLÓ - No se generó archivo TXT. Abortando.")

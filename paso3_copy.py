@@ -96,7 +96,8 @@ def generar_prompt_remate(texto_remate: str) -> str:
                 Si un remate incluye varios inmuebles (ej: departamento + estacionamiento):
                 Crear objeto separado para cada propiedad
                 Mantener datos comunes (causa, tribunal, fecha, etc.)
-                Diferenciar en tipo_propiedad y descripción
+                Diferenciar en tipo_propiedad y descripción.
+                Estar atento a la direccion, revisar si entre propiedades cambian si no, se mantiene la general.
             7.2 .- Datos Faltantes
                 String fields: null
                 Campos numéricos: usar 0 para garantia_porcentaje si no se especifica
@@ -106,6 +107,8 @@ def generar_prompt_remate(texto_remate: str) -> str:
                 Abreviaciones conocidas de tribunales
                 Conversión de números ordinales a formato estándar
         8.- INSTRUCCIÓN FINAL
+            -haz una pequeña validacion de los datos, contrasta con el remate solo para verificar.
+            -Respeta el esquema JSON.
             -Procesa el siguiente texto de remate y devuelve ÚNICAMENTE el JSON resultante, en español, siguiendo todas las reglas establecidas:
         {texto_remate}
     """
@@ -146,7 +149,7 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
             model=engine,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,# NO SE PERMITE CAMBIAR LA TEMPERATURA EN LOS MODELOS 5
-            max_tokens=4096,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
+            max_tokens=8192,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
             # max_completion_tokens=8192, #para gtp5
             response_format={
                 "type": "json_schema",

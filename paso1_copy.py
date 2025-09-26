@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from datetime import datetime
-
+import re
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -21,8 +21,10 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 import tempfile
+from dotenv import load_dotenv
+from collections import Counter
 
-def run_extractor( url: str, paginas: int, usuario:str, password:str):
+def run_extractor( url: str, paginas: int):
     from logger import get_logger, log_section, dbg
 
     logger = get_logger("paso1", log_dir="logs", log_file="paso1.log")
@@ -50,10 +52,11 @@ def run_extractor( url: str, paginas: int, usuario:str, password:str):
     service = Service(log_path="logs/chromedriver.log")
     driver = webdriver.Chrome(service=service, options=chrome_options)
     wait = WebDriverWait(driver, 25)
-
+    
+    load_dotenv()
     URL = url
-    EMAIL = usuario
-    PASSWORD = password
+    EMAIL = os.getenv("USUARIO") 
+    PASSWORD = os.getenv("PASSWORD") 
     PAGINAS_A_PROCESAR = paginas
     OUTPUT_FILE = "remates_extraidos.txt"
     DEBUG_SCREENSHOTS = True
@@ -116,16 +119,175 @@ def run_extractor( url: str, paginas: int, usuario:str, password:str):
         except Exception as e:
             dbg(logger, f"Fallback teclado no disponible: {e}")
 
+    from collections import Counter
+    # Importamos el algoritmo de clustering
+    from sklearn.cluster import KMeans
+    import numpy as np
+    
+    
     def capture_text_from_textlayer(viewer_div):
+        """
+        Versión corregida: detección de columnas por clustering (k-means)
+        y limpieza robusta basada en tu lista de códigos especiales.
+        (Incluye DEBUG prints)
+        """
+        NUM_COLUMNAS_ESPERADAS = 7
+
+        # 1. Extraer TODOS los fragmentos
+        all_fragments = []
         text_layer = viewer_div.find_element(By.CLASS_NAME, "textLayer")
         divs = text_layer.find_elements(By.TAG_NAME, "div")
-        text = "\n".join(div.text for div in divs if div.text.strip())
-        return text_layer, text
+
+
+        for div in divs:
+            style = div.get_attribute('style')
+            text = div.text.strip()
+            if not text:
+                continue
+            try:
+                top = float(re.search(r'top:\s*([\d\.]+)px', style).group(1))
+                left = float(re.search(r'left:\s*([\d\.]+)px', style).group(1))
+                font_size_match = re.search(r'font-size:\s*([\d\.]+)px', style)
+                font_size = float(font_size_match.group(1)) if font_size_match else 0
+                all_fragments.append({'text': text, 'top': top, 'left': left, 'font_size': font_size})
+
+            except (AttributeError, ValueError):
+                continue
+
+        if not all_fragments:
+
+            return ""
+
+        # 2. Filtrar por font-size más común Y títulos numéricos
+        if not any(f['font_size'] > 0 for f in all_fragments):
+            filtered_fragments = all_fragments
+
+        else:
+            font_size_counts = Counter(f['font_size'] for f in all_fragments if f['font_size'] > 0)
+            main_font_size = font_size_counts.most_common(1)[0][0]
+
+            filtered_fragments = []
+            for frag in all_fragments:
+                is_main_font = abs(frag['font_size'] - main_font_size) < 0.1
+                is_numeric_title = frag['text'].isdigit()
+                if is_main_font or is_numeric_title:
+                    filtered_fragments.append(frag)
+
+        if len(filtered_fragments) < 2:
+
+            return "\n".join(f['text'] for f in filtered_fragments)
+
+        # 3. Clustering por columnas
+        left_coords = np.array([f['left'] for f in filtered_fragments]).reshape(-1, 1)
+        kmeans = KMeans(n_clusters=NUM_COLUMNAS_ESPERADAS, n_init='auto', random_state=0)
+        kmeans.fit(left_coords)
+        column_centers = sorted(kmeans.cluster_centers_.flatten())
+        dividers = [(column_centers[i] + column_centers[i+1]) / 2 for i in range(len(column_centers)-1)]
+
+
+        # 4. Asignar fragmentos a columnas
+        num_columns = len(column_centers)
+        columns = [[] for _ in range(num_columns)]
+        for frag in filtered_fragments:
+            col_index = 0
+            for divider in dividers:
+                if frag['left'] > divider:
+                    col_index += 1
+                else:
+                    break
+            if col_index < num_columns:
+                columns[col_index].append(frag)
+
+
+        # 5. Armar texto columna por columna y limpiar con lógica por códigos especiales
+        full_page_text = []
+
+        # tu lista de códigos (puedes ampliarla dinámicamente si quieres)
+        numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616"}
+        remate_re = re.compile(r'^16\d{2}$')  # regla: 16xx se considera remate
+        for i, column in enumerate(columns):
+            if not column:
+                continue
+            column.sort(key=lambda f: f['top'])
+            lines = [f['text'] for f in column]
+
+            for l in lines:
+                print("   ", l)
+
+            # máquina de estados simple:
+            output_lines = []
+            capture = False          # True = estamos acumulando texto de remate
+            seen_remate = False     # si vimos al menos un remate en esta columna
+            last_special_code = None
+
+            for line in lines:
+                s = line.strip()
+                if s in numeros_especiales:
+                    last_special_code = s
+                    s_marcado = f"[CODE:{s}]"
+                    if remate_re.match(s):   # es remate (16xx)
+                        
+                        output_lines.append(s_marcado)
+                        capture = True
+                        seen_remate = True
+                    else:
+                        # código especial pero NO remate -> ruido: desactivar captura
+                        
+                        capture = False
+                    continue  # el código no se guarda si es ruido; si es remate ya se guardó
+
+                # línea NO es código especial
+                if capture:
+                    output_lines.append(line)
+
+            # Si no se detectó ningún remate en la columna, conservar sólo el último código especial (comportamiento anterior)
+            if not seen_remate and last_special_code:
+                
+                output_lines = [last_special_code]
+
+            # Normalizar: eliminar duplicados consecutivos exactos (p.ej. '1616' seguido de '1616' sin texto entre)
+            normalized = []
+            prev = None
+            for L in output_lines:
+                if prev is not None and prev.strip() == L.strip():
+                    
+                    continue
+                normalized.append(L)
+                prev = L
+
+            full_page_text.append("\n".join(normalized))
+
+        return "".join(full_page_text)
+    
+    
+    # def limpiar_por_codigos(texto):
+    #     lineas = texto.split("\n")
+    #     resultado = []
+    #     for linea in lineas:
+    #         codigo_match = re.match(r"^(\d{3,4})\b", linea.strip())
+    #         if codigo_match:
+    #             codigo = int(codigo_match.group(1))
+    #             # Guardar solo remates (16xx)
+    #             if 1600 <= codigo < 1700:
+    #                 resultado.append(linea)
+    #                 # marcar que estamos dentro de un remate
+    #                 continue
+    #             else:
+    #                 # ignorar bloques 13xx, no se agregan
+    #                 continue
+    #         else:
+    #             # Si no es encabezado de anuncio y estamos en modo "remate", lo guardamos
+    #             if resultado:
+    #                 resultado.append(linea)
+    #     return "\n".join(resultado)
+
+
 
     # LOGIN
     log_section(logger, "LOGIN")
     try:
         logger.info(f"🌍 Navegando a: {URL}")
+        driver.delete_all_cookies()
         driver.get(URL)
         logger.info("🔐 Esperando el formulario de login...")
         username_field = wait.until(EC.element_to_be_clickable((By.ID, "txtUsername")))
@@ -185,7 +347,8 @@ def run_extractor( url: str, paginas: int, usuario:str, password:str):
                 logger.info("   ✨ Extrayendo texto de la página...")
                 f_out.write(f"--- Página {page_num} ---\n\n")
                 try:
-                    text_layer_elem, text = capture_text_from_textlayer(viewer_div)
+                    text = capture_text_from_textlayer(viewer_div)
+                    # text = limpiar_por_codigos(text1)
                     f_out.write(text + "\n\n")
                     logger.info(f"   💾 Texto de la página {page_num} guardado ({len(text)} chars).")
                 except Exception as e:

@@ -34,39 +34,70 @@ CLAVES_SEPARADORES = [
     r"INMUEBLE\s+COMUNA\s+QUILL[ÓO]N\.[A-ZÁÉÍÓÚÑ]",
     r"LICITACI[ÓO]N\s+REMATE\.\s+CONVENIO",
     r"CON\s+FECHA\s+.*HORAS",
+    r"\d°?\s+JUZGADO\s+DE\s+LETRAS\s+DE\s+SAN\s+B",  
+    r"ANTE\s+JUEZ\s+[ÁA]RBITRO\s+LIQUIDADOR",       
+    r"REMATE:\s+SEGUNDO\s+JUZGADO\s+CI", 
 ]
 
 
 def recortar_remates(texto: str):
     """
-    Encuentra el bloque de texto que va desde el encabezado
-    "1616 Remates de Propiedades" hasta justo antes de
-    "1635 Personas buscadas y cosas perdidas".
+    Versión más explícita de la lógica de recorte.
     """
-    patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES"
-    patron_fin = r"1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS"
+    patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES|1616"
+    patron_fin = r"(1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS|1640\s+CITAN\s+A\s+REUNIÓN\s+INSTITUCIONES|1640)"
 
-    # Buscar inicio
+    # Buscar patrones
     match_inicio = re.search(patron_inicio, texto, re.IGNORECASE)
-    if not match_inicio:
-        logger.error("[ERROR]❌ - No se encontró el encabezado de remates en el texto.")
-        return ""
-
-    pos_inicio = match_inicio.start()
-
-    # Buscar fin (después del inicio)
-    match_fin = re.search(patron_fin, texto[pos_inicio:], re.IGNORECASE)
-    if not match_fin:
-        logger.warning("[WARN]⚠️ - No se encontró el encabezado de fin, se usará todo el texto desde el inicio.")
-        texto_cortado = texto[pos_inicio:]
-    else:
+    match_fin = re.search(patron_fin, texto, re.IGNORECASE)      
+        
+    # Casos posibles
+    if match_inicio is not None and match_fin is not None:
+        # Caso 1: Se encontraron ambos patrones
+        pos_inicio = match_inicio.start()
         pos_fin = match_fin.start()
-        texto_cortado = texto[pos_inicio:pos_inicio + pos_fin]
+        
+        if pos_fin > pos_inicio:
+            logger.info("[INFO]✅ - Caso 1: Ambos patrones encontrados, recortando entre ellos.")
+            texto_cortado = texto[pos_inicio:pos_fin]
+        else:
+            logger.warning("[WARN]⚠️ - Caso 1b: Fin antes que inicio, usando desde inicio al final.")
+            texto_cortado = texto[pos_inicio:]
+            
+    elif match_inicio is not None and match_fin is None:
+        # Caso 2: Solo se encontró el inicio
+        pos_inicio = match_inicio.start()
+        logger.warning("[WARN]⚠️ - Caso 2: Solo inicio encontrado, usando desde inicio al final.")
+        texto_cortado = texto[pos_inicio:]
+        
+    elif match_inicio is None and match_fin is not None:
+        # Caso 3: Solo se encontró el fin
+        pos_fin = match_fin.start()
+        logger.warning("[WARN]⚠️ - Caso 3: Solo fin encontrado, usando desde el principio al fin.")
+        texto_cortado = texto[:pos_fin]
+        
+    else:
+        # Caso 4: No se encontró ningún patrón
+        logger.warning("[WARN]⚠️ - Caso 4: Ningún patrón encontrado, usando todo el texto.")
+        texto_cortado = texto
+        
+    texto_limpio = re.sub(r'\[CODE:\d{3,4}\]', '', texto_cortado)  # elimina los marcados
+    texto_limpio = re.sub(r'\b1616\b', '', texto_limpio)          # elimina 1616 aislado
+    texto_limpio = re.sub(r'\s+', ' ', texto_limpio)              # normaliza espacios
+    texto_limpio = texto_limpio.strip()
 
-    # --- Parte temporal: guarda archivo ---
+    # Logging de información
+    logger.info(f"[INFO]📊 - Longitud original: {len(texto)}")
+    logger.info(f"[INFO]📊 - Longitud recortado: {len(texto_cortado)}")
+    if match_inicio:
+        logger.info(f"[INFO] Frase detectada como inicio: '{match_inicio.group()}'")
+        logger.info(f"[INFO]📊 - Inicio encontrado en posición: {match_inicio.start()}")
+    if match_fin:
+        logger.info(f"[INFO]📊 - Fin encontrado en posición: {match_fin.start()}")
+        logger.info(f"[INFO] Frase detectada como fin: '{match_fin.group()}'")
+    # Guardar archivo temporal
     with open("remates_cortados.txt", "w", encoding="utf-8") as f:
         f.write(texto_cortado)
-    # --------------------------------------
 
     return texto_cortado
 
@@ -77,17 +108,15 @@ def separador_inteligente(match: re.Match) -> str:
     Esta función se ejecuta para CADA fusión encontrada.
     Decide cómo reemplazar el texto de forma segura.
     """
-    # 1. RESCATAR LA INFORMACIÓN
-    # Capturamos todas las piezas del texto que coincidió con el patrón.
+
     match_completo = match.group(0)  # El texto completo original (ej: "Secretaría REMATE")
     print("match",match_completo)
     grupo_cierre = match.group(1)    # El final del primer remate
     print("match",grupo_cierre)
-    grupo_inicio = match.group(4)    # El inicio del segundo remate
+    grupo_inicio = match.group(3)    # El inicio del segundo remate
     print("match",grupo_inicio)
 
-    # 2. VERIFICAR QUE TODO CUMPLA
-    # La condición es simple: ¿encontramos tanto el cierre como el inicio?
+
     if grupo_cierre and grupo_inicio:
         # Si la verificación es exitosa, aplicamos la separación.
         texto_separado = f"{grupo_cierre}\n\n{grupo_inicio}"
@@ -100,7 +129,7 @@ def separador_inteligente(match: re.Match) -> str:
         logger.warning(f"Separación fallida. Se recuperó el texto original: '{match_completo}'")
         return match_completo
 
-# Suponiendo que 'logger' está configurado
+
 def pre_separar_remates_fusionados(texto: str) -> str:
     """
     Busca patrones de remates fusionados y utiliza una función de reemplazo
@@ -130,7 +159,6 @@ def pre_separar_remates_fusionados(texto: str) -> str:
         
     )
     
-    # En lugar de un texto de reemplazo, pasamos la FUNCIÓN 'separador_inteligente'.
     texto_corregido = patron_fusion.sub(separador_inteligente, texto)
 
     return texto_corregido
@@ -165,6 +193,8 @@ def limpiar_encabezados(texto: str) -> str:
     ]
     for patron, reemplazo in patrones_union:
         texto = re.sub(patron, reemplazo, texto, flags=re.IGNORECASE)
+    
+    
 
     return texto
 
@@ -184,7 +214,20 @@ def insertar_separadores(texto: str) -> str:
 
 def limpiar_lineas_vacias(texto: str) -> str:
     logger.debug("Eliminando líneas vacías múltiples...")
-    return re.sub(r"\n\s*\n+", "\n\n", texto).strip()
+
+    # eliminar códigos especiales marcados
+    texto = re.sub(r'\[CODE:1616\]', '', texto)
+    texto = re.sub(r'\[CODE:', '', texto)
+    texto = re.sub(r'1616\]', '', texto)
+
+    # normalización ligera: reemplazar saltos de línea y tab por espacio, luego múltiples espacios → 1
+    # texto = re.sub(r'[\n\t]+', ' ', texto)
+    # texto = re.sub(r'\s+', ' ', texto)
+
+    # ahora sí eliminar líneas vacías múltiples como estaba antes
+    texto = re.sub(r"\n\s*\n+", "\n\n", texto)
+
+    return texto
 
 
 def es_encabezado(linea: str) -> bool:

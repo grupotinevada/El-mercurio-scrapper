@@ -10,7 +10,7 @@ from logger import get_logger, log_section, dbg
 logger = get_logger("app", log_dir="logs", log_file="app.log")
 
 cancel_event = threading.Event()
-enable_cleanup = True
+enable_cleanup = False
 window = None
 
 import sys
@@ -101,8 +101,6 @@ class Api:
             # Extraer y validar los datos
             url = data.get("url", "").strip()
             paginas_str = data.get("paginas", "0")
-            usuario = data.get("usuario", "")
-            password = data.get("password", "")
 
             if not url:
                 return {'success': False, 'message': 'Error: La URL no puede estar vacía.'}
@@ -112,7 +110,7 @@ class Api:
             # Lanzar el hilo para procesar sin bloquear la UI
             thread = threading.Thread(
                 target=self._run_proceso_mercurio,
-                args=(url, num_paginas, usuario, password),
+                args=(url, num_paginas),
                 daemon=True
             )
             thread.start()
@@ -177,7 +175,7 @@ class Api:
                     mensaje_error = f"Error en el proceso Macal: {e}".replace("'", "\\'")
                     window.evaluate_js(f"finalizarProcesoMacal('{mensaje_error}', 'error')")
 
-    def _run_proceso_mercurio(self, url, paginas, usuario, password):
+    def _run_proceso_mercurio(self, url, paginas):
         """
         Ejecuta el orquestador y notifica a la UI si hubo cancelación o finalización.
         """
@@ -190,7 +188,7 @@ class Api:
                 window.evaluate_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
                 
         try:
-            resultado = main.orquestador_con_datos(url, paginas, usuario, password, cancel_event, enable_cleanup, progress_callback)
+            resultado = main.orquestador_con_datos(url, paginas, cancel_event, enable_cleanup, progress_callback)
             # Al final, actualizar mensaje en la UI
             if cancel_event.is_set():
                 if window: # ✅ 3. Usa la variable window para llamar al método

@@ -22,9 +22,7 @@ class Api:
             # Extraer y validar los datos
             url = data.get("url", "").strip()
             paginas_str = data.get("paginas", "0")
-            usuario = data.get("usuario", "")
-            password = data.get("password", "")
-
+            
             if not url:
                 # Devolvemos un diccionario para que JS pueda interpretarlo
                 return {'success': False, 'message': 'Error: La URL no puede estar vacía.'}
@@ -35,7 +33,7 @@ class Api:
             # daemon=True asegura que el hilo se cerrará si la aplicación principal se cierra
             thread = threading.Thread(
                 target=main.orquestador_con_datos,
-                args=(url, num_paginas, usuario, password, cancel_event),
+                args=(url, num_paginas, cancel_event),
                 daemon=True
             )
             thread.start()

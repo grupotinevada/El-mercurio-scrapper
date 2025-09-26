@@ -104,14 +104,6 @@
                     <label for="paginas" class="form-label">Páginas a procesar</label>
                     <input type="number" class="form-control" id="paginas" placeholder="Número de páginas" required>
                   </div>
-                  <div class="mb-3">
-                    <label for="usuario" class="form-label">Usuario</label>
-                    <input type="text" class="form-control" id="usuario" value="barbara@grupohouse.cl" required>
-                  </div>
-                  <div class="mb-3">
-                    <label for="password" class="form-label">Contraseña</label>
-                    <input type="password" class="form-control" id="password" value="Fliphouse" required>
-                  </div>
                   <div class="d-grid gap-2">
                     <button class="btn btn-outline-primary fw-bold" id="submitBtn" onclick="enviar()">Procesar</button>
                     <button class="btn btn-outline-secondary fw-bold" id="openFolderBtn" onclick="abrirResultados()">
@@ -181,9 +173,7 @@
     const data = {
       url: document.getElementById('url').value,
       paginas: document.getElementById('paginas').value,
-      usuario: document.getElementById('usuario').value,
-      password: document.getElementById('password').value
-    };
+      };
 
     submitButton.disabled = true;
     actualizarMensajeUI('Iniciando proceso...');
