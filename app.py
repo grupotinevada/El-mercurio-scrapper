@@ -10,7 +10,7 @@ from logger import get_logger, log_section, dbg
 logger = get_logger("app", log_dir="logs", log_file="app.log")
 
 cancel_event = threading.Event()
-enable_cleanup = False
+enable_cleanup = True
 window = None
 
 import sys

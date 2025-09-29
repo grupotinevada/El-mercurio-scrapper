@@ -36,7 +36,13 @@ CLAVES_SEPARADORES = [
     r"CON\s+FECHA\s+.*HORAS",
     r"\d°?\s+JUZGADO\s+DE\s+LETRAS\s+DE\s+SAN\s+B",  
     r"ANTE\s+JUEZ\s+[ÁA]RBITRO\s+LIQUIDADOR",       
-    r"REMATE:\s+SEGUNDO\s+JUZGADO\s+CI", 
+    r"REMATE:\s+SEGUNDO\s+JUZGADO\s+CI",
+    r"UNDECIMO\s+JUZGADO\s+CIVIL\s+SAN",
+    r"ÁRBITRO\s+PARTIDOR\s+IVÁN\s+MOSCOSO"
+    r"(JUEZ|ÁRBITRO)\s+PARTIDOR\s+(DON\s+)?[A-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ]+)*"
+    r"(?:\d{1,2}|PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|SÉPTIMO|OCTAVO|NOVENO|DÉCIMO|UNDÉCIMO|DUODÉCIMO)\s+JUZGADO\s+CIVIL(?:\s+[A-ZÁÉÍÓÚÑ]+)?"
+    r"(REMATE|LICITACI[ÓO]N\s+REMATE|OFERTA\s+REMATE|VENTA\s+EN\s+REMATE)"
+     
 ]
 
 
@@ -45,7 +51,7 @@ def recortar_remates(texto: str):
     Versión más explícita de la lógica de recorte.
     """
     patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES|1616"
-    patron_fin = r"(1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS|1640\s+CITAN\s+A\s+REUNIÓN\s+INSTITUCIONES|1640)"
+    patron_fin = r"(1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS|1640\s+CITAN\s+A\s+REUNIÓN\s+INSTITUCIONES|1640|1635)"
 
     # Buscar patrones
     match_inicio = re.search(patron_inicio, texto, re.IGNORECASE)
@@ -81,11 +87,6 @@ def recortar_remates(texto: str):
         logger.warning("[WARN]⚠️ - Caso 4: Ningún patrón encontrado, usando todo el texto.")
         texto_cortado = texto
         
-    texto_limpio = re.sub(r'\[CODE:\d{3,4}\]', '', texto_cortado)  # elimina los marcados
-    texto_limpio = re.sub(r'\b1616\b', '', texto_limpio)          # elimina 1616 aislado
-    texto_limpio = re.sub(r'\s+', ' ', texto_limpio)              # normaliza espacios
-    texto_limpio = texto_limpio.strip()
-
     # Logging de información
     logger.info(f"[INFO]📊 - Longitud original: {len(texto)}")
     logger.info(f"[INFO]📊 - Longitud recortado: {len(texto_cortado)}")
@@ -105,62 +106,56 @@ import re
 
 def separador_inteligente(match: re.Match) -> str:
     """
-    Esta función se ejecuta para CADA fusión encontrada.
-    Decide cómo reemplazar el texto de forma segura.
+    Reemplaza la fusión detectada de remates por separación segura.
     """
-
-    match_completo = match.group(0)  # El texto completo original (ej: "Secretaría REMATE")
-    print("match",match_completo)
-    grupo_cierre = match.group(1)    # El final del primer remate
-    print("match",grupo_cierre)
-    grupo_inicio = match.group(3)    # El inicio del segundo remate
-    print("match",grupo_inicio)
-
+    match_completo = match.group(0)
+    grupo_cierre = match.group(1)
+    grupo_espacios = match.group(2)
+    grupo_inicio = match.group(3)
 
     if grupo_cierre and grupo_inicio:
-        # Si la verificación es exitosa, aplicamos la separación.
-        texto_separado = f"{grupo_cierre}\n\n{grupo_inicio}"
+        # Evitar doble salto si ya hay salto
+        if "\n" in grupo_espacios:
+            texto_separado = f"{grupo_cierre}{grupo_espacios}{grupo_inicio}"
+        else:
+            texto_separado = f"{grupo_cierre}\n\n{grupo_inicio}"
         logger.info(f"Separación exitosa: '{grupo_cierre}' | '{grupo_inicio}'")
         return texto_separado
     else:
-        # 3. RECUPERAR SI ES NECESARIO
-        # Si la verificación falla, no hacemos nada y devolvemos el texto original.
-        # Aquí se incrusta la "palabra rescatada" (el texto completo) sin cambios.
         logger.warning(f"Separación fallida. Se recuperó el texto original: '{match_completo}'")
         return match_completo
 
 
 def pre_separar_remates_fusionados(texto: str) -> str:
     """
-    Busca patrones de remates fusionados y utiliza una función de reemplazo
-    para separarlos de forma segura.
+    Busca patrones de remates fusionados y los separa de forma segura.
     """
-    logger.debug("Buscando y separando remates fusionados (lógica básica)...")
+    logger.debug("Buscando y separando remates fusionados...")
+
     bloque_manual = [
-    r"REMATE\b",
-    r"REMATE[:.]?",
-    r"JUEZ PARTIDOR",
-    r"JUEZ ARBITRO",
-    r"LICITACI[ÓO]N\s+REMATE"
+        r"REMATE\b",
+        r"REMATE[:.]?",
+        r"JUEZ PARTIDOR",
+        r"JUEZ ARBITRO",
+        r"LICITACI[ÓO]N\s+REMATE"
     ]
     
-    todos_los_inicios = bloque_manual + CLAVES_SEPARADORES
+    # CLAVES_SEPARADORES debería ser otra lista definida previamente
+    todos_los_inicios = bloque_manual + CLAVES_SEPARADORES  
 
-    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b|Secretario.|Secretario"
+    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b"
     patron_email = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     patron_telefono = r'(?:\+56\s?)?[29]\s?\d{4}\s?\d{4}'
     palabras_inicio = r"(?:{})".format("|".join(todos_los_inicios))
-    punto_cierre = r"\b(Secretaría.|Secretario.\(a.\)|La Actuaria.|El Actuario.)\b"
 
+    # Patrón final: cierre + espacios + inicio
     patron_fusion = re.compile(
-        f"({palabras_cierre}|{patron_telefono}|{patron_email}|{punto_cierre})" + 
-        r"(\s+)"                                                 
-        f"({palabras_inicio})",                                   
-        
+        f"({palabras_cierre}|{patron_telefono}|{patron_email})"  # grupo 1: cierre
+        r"(\s+)"                                                # grupo 2: espacios (pueden incluir saltos)
+        f"({palabras_inicio})"                                   # grupo 3: inicio
     )
-    
-    texto_corregido = patron_fusion.sub(separador_inteligente, texto)
 
+    texto_corregido = patron_fusion.sub(separador_inteligente, texto)
     return texto_corregido
 
 
@@ -212,40 +207,37 @@ def insertar_separadores(texto: str) -> str:
     """
     return re.sub(patron_separador, "\n\n", texto, flags=re.MULTILINE | re.VERBOSE)
 
-def limpiar_lineas_vacias(texto: str) -> str:
-    logger.debug("Eliminando líneas vacías múltiples...")
+def limpieza(texto: str) -> str:
+    logger.debug("[LIMPIEZA] - Eliminando líneas vacías múltiples y códigos...")
 
-    # eliminar códigos especiales marcados
+    # 1. Eliminar códigos específicos
     texto = re.sub(r'\[CODE:1616\]', '', texto)
     texto = re.sub(r'\[CODE:', '', texto)
     texto = re.sub(r'1616\]', '', texto)
 
-    # normalización ligera: reemplazar saltos de línea y tab por espacio, luego múltiples espacios → 1
-    # texto = re.sub(r'[\n\t]+', ' ', texto)
-    # texto = re.sub(r'\s+', ' ', texto)
-
-    # ahora sí eliminar líneas vacías múltiples como estaba antes
+    # 2. Compactar saltos de línea excesivos
     texto = re.sub(r"\n\s*\n+", "\n\n", texto)
+
+    # 3. Unificar puntos suspensivos
+    texto = re.sub(r"\s*\.\.\s*", " ", texto)
+
+    # 4. Normalizar espacios múltiples
+    texto = re.sub(r"\s{2,}", " ", texto)
+
+    # 5. Corregir espacios antes de signos de puntuación
+    texto = re.sub(r"\s+([,.;:])", r"\1", texto)
+
+    # 7. Normalizar horas con espacios
+    texto = re.sub(r"(\d{1,2}):\s*(\d{2})", r"\1:\2", texto)
+
+    # 8. Corregir formato de montos en pesos
+    texto = re.sub(r"\$\s*([\d\.]+)\s*-\s*", r"$\1", texto)
+    
+    texto = re.sub(r"\s{2,}", " ", texto)
 
     return texto
 
 
-def es_encabezado(linea: str) -> bool:
-    palabras = linea.strip().split()
-    if len(palabras) < 3:
-        return False
-    mayusculas = sum(1 for c in linea if c.isupper() or c in "ÁÉÍÓÚÑÜ")
-    total = sum(1 for c in linea if c.isalpha())
-    return total > 0 and (mayusculas / total) > 0.8
-
-
-def es_encabezado(linea: str) -> bool:
-    palabras = linea.strip().split()
-    if len(palabras) < 3:
-        return False
-    mayusculas = sum(1 for c in linea if c.isupper() or c in "ÁÉÍÓÚÑÜ")
-    total = sum(1 for c in linea if c.isalpha())
-    return total > 0 and (mayusculas / total) > 0.8
 
 
 def extraer_parrafos_remates(texto: str) -> List[str]:
@@ -269,9 +261,11 @@ def limpiar_encabezados_y_guardar(
         
     texto_cortado = recortar_remates(texto) 
     texto_limpio = limpiar_encabezados(texto_cortado)
-    texto_pre_separado = pre_separar_remates_fusionados(texto_limpio)
-    texto_separado = insertar_separadores(texto_pre_separado)
-    texto_final = limpiar_lineas_vacias(texto_separado) 
+    texto_clean = limpieza(texto_limpio)
+    texto_pre_separado = pre_separar_remates_fusionados(texto_clean)
+    
+    texto_final = insertar_separadores(texto_pre_separado)
+    #texto_final = limpieza(texto_separado) 
 
     if output_path:
         logger.info("Limpieza terminada")
