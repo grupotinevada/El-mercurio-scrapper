@@ -7,48 +7,6 @@ from logger import get_logger, log_section, dbg
 
 logger = get_logger("paso2", log_dir="logs", log_file="paso2.log")
 
-#ambas funciones pueden usar las mismas claves:
-CLAVES_SEPARADORES = [
-    # --- Patrones Originales ---
-    r"REMATE",
-    r"EXTRACTO",
-    r"JUZGADO\s+DE\s+POLIC[ÍI]A\s+LOCAL",
-    r"JUZGADO\s+DE\s+LETRAS",
-    r"JUEZ\s+ARBITRO",
-    r"LICITACI[ÓO]N\s+REMATE",
-    r"EN\s+JUICIO\s+PARTICI[ÓO]N",
-    r"OFERTA\s+REMATE",
-    r"VENTA\s+EN\s+REMATE",
-    r"ANTE\s+EL\s+\d{1,2}°?\s+JUZGADO\s+CIVIL",
-    r"\d{1,2}°?\s+JUZGADO\s+CIVIL",
-    r"VIG[ÉE]SIMO",
-    r"D[ÉE]CIMO",
-    r"EN\s+CAUSA\s+ROL",
-    r"JUEZ\s+PARTIDOR\s+DON\s+[A-ZÁÉÍÓÚÑ]+",
-    r"REMATE,\s+ANTE\s+JUEZ\s+PARTIDOR",
-    r"REMATE:\s+VIG[ÉE]SIMO\s+JUZGADO\s+CI",
-    r"REMATE\s+ANTE\s+JUEZ\s+ARBITRO,?",
-    r"REMATE[.,]?\s+VIG[ÉE]SIMO\s+SEGUNDO\s+JUZGADO",
-    r"JUEZ\s+PARTIDOR\s+[A-ZÁÉÍÓÚÑ]+",
-    r"SEGUNDO\s+REMATE\s+PARTICI[ÓO]N",
-    r"ANTE\s+JUEZ\s+PARTIDOR",
-    r"INMUEBLE\s+COMUNA\s+QUILL[ÓO]N\.[A-ZÁÉÍÓÚÑ]",
-    r"LICITACI[ÓO]N\s+REMATE\.\s+CONVENIO",
-    r"CON\s+FECHA\s+.*HORAS",
-    r"\d°?\s+JUZGADO\s+DE\s+LETRAS\s+DE\s+SAN\s+B",
-    r"ANTE\s+JUEZ\s+[ÁA]RBITRO\s+LIQUIDADOR",
-    r"REMATE:\s+SEGUNDO\s+JUZGADO\s+CI",
-    r"UNDECIMO\s+JUZGADO\s+CIVIL\s+SAN",
-    r"ÁRBITRO\s+PARTIDOR\s+IVÁN\s+MOSCOSO",
-    r"(JUEZ|ÁRBITRO)\s+PARTIDOR\s+(DON\s+)?[A-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ]+)*",
-    r"(?:\d{1,2}|PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|SÉPTIMO|OCTAVO|NOVENO|DÉCIMO|UNDÉCIMO|DUODÉCIMO)\s+JUZGADO\s+CIVIL(?:\s+[A-ZÁÉÍÓÚÑ]+)?",
-    r"(REMATE|LICITACI[ÓO]N\s+REMATE|OFERTA\s+REMATE|VENTA\s+EN\s+REMATE)",
-    r"JUEZ\s+[ÁA]RBITRO\s+[A-ZÁÉÍÓÚÑ\s]+",
-    r"REMATE\s+ANTE\s+JUEZ\s+PARTIDOR",
-    r"VIG[ÉE]SIMO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|S[ÉE]PTIMO|OCTAVO|NOVENO)\s+JUZGADO\s+CIVIL"
-]
-
-
 def recortar_remates(texto: str):
     """
     Versión más explícita de la lógica de recorte.
@@ -111,59 +69,45 @@ def recortar_remates(texto: str):
 
 import re
 
-def separador_inteligente(match: re.Match) -> str:
-    """
-    Reemplaza la fusión detectada de remates por separación segura.
-    """
-    match_completo = match.group(0)
-    grupo_cierre = match.group(1)
-    grupo_espacios = match.group(2)
-    grupo_inicio = match.group(3)
-
-    if grupo_cierre and grupo_inicio:
-        # Evitar doble salto si ya hay salto
-        if "\n" in grupo_espacios:
-            texto_separado = f"{grupo_cierre}{grupo_espacios}{grupo_inicio}"
-        else:
-            texto_separado = f"{grupo_cierre}\n\n{grupo_inicio}"
-        logger.info(f"Separación exitosa: '{grupo_cierre}' | '{grupo_inicio}'")
-        return texto_separado
-    else:
-        logger.warning(f"Separación fallida. Se recuperó el texto original: '{match_completo}'")
-        return match_completo
-
-
-def pre_separar_remates_fusionados(texto: str) -> str:
-    """
-    Busca patrones de remates fusionados y los separa de forma segura.
-    """
-    logger.debug("Buscando y separando remates fusionados...")
-
-    bloque_manual = [
-        r"REMATE\b",
-        r"REMATE[:.]?",
-        r"JUEZ PARTIDOR",
-        r"JUEZ ARBITRO",
-        r"LICITACI[ÓO]N\s+REMATE"
-    ]
-    
-    # CLAVES_SEPARADORES debería ser otra lista definida previamente
-    todos_los_inicios = bloque_manual + CLAVES_SEPARADORES  
-
-    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b"
-    patron_email = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    patron_telefono = r'(?:\+56\s?)?[29]\s?\d{4}\s?\d{4}'
-    palabras_inicio = r"(?:{})".format("|".join(todos_los_inicios))
-
-    # Patrón final: cierre + espacios + inicio
-    patron_fusion = re.compile(
-        f"({palabras_cierre}|{patron_telefono}|{patron_email})"  # grupo 1: cierre
-        r"(\s+)"                                                # grupo 2: espacios (pueden incluir saltos)
-        f"({palabras_inicio})"                                   # grupo 3: inicio
+patron_maestro = re.compile(
+    r"""
+    # --- GRUPO 1: Títulos que empiezan con REMATE o similar (AJUSTADO) ---
+    (?:
+        # AÑADIDO: Patrón específico para "REMATE ANTE JUEZ PARTIDOR" para mayor precisión.
+        \bREMATE\s+ANTE\s+JUEZ\s+PARTIDOR\b
+        |
+        # Patrón original que cubre otros casos
+        \b(REMATE|EXTRACTO|LICITACI[ÓO]N|SUBASTA|AVISO)\b[:.,]?\s+
+        (?:ANTE\s+EL\s+|EL\s+|ANTE\s+)?
+        (?:\d{1,2}°?|[\wÁÉÍÓÚÑ\s]+)?\s*
+        (?:JUZGADO|JUEZ|ÁRBITRO|PARTIDOR)
     )
-
-    texto_corregido = patron_fusion.sub(separador_inteligente, texto)
-    return texto_corregido
+    |
+    # --- GRUPO 2: Títulos que empiezan con Juzgado (Sin cambios) ---
+    (?:
+        \b
+        # ACEPTA HASTA DOS PALABRAS ORDINALES JUNTAS (ej: "VIGÉSIMO QUINTO")
+        (?:\d{1,2}°?|PRIMER|SEGUNDO|TERCER|CUARTO|QUINTO|SEXTO|S[EÉ]PTIMO|OCTAVO|NOVENO|D[EÉ]CIMO|UND[EÉ]CIMO|DUOD[EÉ]CIMO|VIG[EÉ]SIMO|TRIG[EÉ]SIMO)
+        (?:\s+(?:PRIMER|SEGUNDO|TERCER|CUARTO|QUINTO|SEXTO|S[EÉ]PTIMO|OCTAVO|NOVENO))?
+        \s+
+        # ACEPTA "JUZ" O "JUZGADO" para casos truncados
+        JUZG(?:ADO)?(?:\s+DE\s+LETRAS|\s+CIVIL)?\b
+    )
+    |
+    # --- GRUPO 3: Títulos que empiezan con Juez o Árbitro (Sin cambios) ---
+    (?:
+        # Este grupo ya captura "JUEZ ÁRBITRO BRUNO ROMO" con [\wÁÉÍÓÚÑ\s]+
+        \b(JUEZ|ÁRBITRO|PARTIDOR)\s+
+        (?:ÁRBITRO|PARTIDOR|[\wÁÉÍÓÚÑ\s]+)
+    )
+    |
+    # --- GRUPO 4: Títulos de Licitación Online (Sin cambios) ---
+    (?:
+        \bLICITACI[ÓO]N\s+REMATE\s+ONLINE\b
+    )
+    """,
+    re.VERBOSE
+)
 
 
 
@@ -201,19 +145,6 @@ def limpiar_encabezados(texto: str) -> str:
     return texto
 
 
-def insertar_separadores(texto: str) -> str:
-    logger.debug("Insertando separadores entre avisos...")
-    patron_frases = "|".join(CLAVES_SEPARADORES)
-    patron_separador = rf"""
-        \n
-        (?=
-            \s*
-            (?:{patron_frases})
-            (?:\s+[A-ZÁÉÍÓÚÑ\d]+)*
-        )
-    """
-    return re.sub(patron_separador, "\n\n", texto, flags=re.MULTILINE | re.VERBOSE)
-
 def limpieza(texto: str) -> str:
     logger.debug("[LIMPIEZA] - Eliminando líneas vacías múltiples y códigos...")
 
@@ -244,7 +175,20 @@ def limpieza(texto: str) -> str:
 
     return texto
 
+def insertar_separadores_inteligente(texto: str) -> str:
+    """
+    Usa el patrón maestro para encontrar todos los inicios de remate e
+    inserta un separador de doble salto de línea antes de cada uno.
+    Devuelve un único string modificado.
+    """
+    logger.info("Insertando separadores con el patrón maestro...")
 
+    # re.sub() reemplaza cada coincidencia del patrón con el texto de reemplazo.
+    # '\n\n\g<0>' significa: "inserta dos saltos de línea y luego el texto completo que coincidió con el patrón (\g<0>)".
+    texto_separado = patron_maestro.sub(r'\n\n\g<0>', texto)
+    
+    # .lstrip() elimina cualquier salto de línea inicial si el texto comenzaba con un remate.
+    return texto_separado.lstrip()
 
 
 def extraer_parrafos_remates(texto: str) -> List[str]:
@@ -266,13 +210,11 @@ def limpiar_encabezados_y_guardar(
     with open(input_path, "r", encoding="utf-8") as f:
         texto = f.read()
         
-    texto_cortado = recortar_remates(texto) 
-    texto_limpio = limpiar_encabezados(texto_cortado)
-    texto_clean = limpieza(texto_limpio)
-    texto_pre_separado = pre_separar_remates_fusionados(texto_clean)
-    
-    texto_final = insertar_separadores(texto_pre_separado)
-    #texto_final = limpieza(texto_separado) 
+    # ...
+    texto_cortado = recortar_remates(texto)
+    texto_limpio_inicial = limpiar_encabezados(texto_cortado)
+    texto_limpio_final = limpieza(texto_limpio_inicial)
+    texto_final = insertar_separadores_inteligente(texto_limpio_final)
 
     if output_path:
         logger.info("Limpieza terminada")

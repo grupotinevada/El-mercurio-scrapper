@@ -41,7 +41,7 @@ def run_extractor( url: str, paginas: int):
     user_data_dir = os.path.join(tempfile.gettempdir(), f"chrome_profile_{os.getpid()}")
 
     # 2. Le dices a Chrome que USE esa ruta 
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}") # <--- ¡ESTA ES LA LÍNEA QUE FALTABA!
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 
     # El resto de tu configuración está bien
     chrome_options.add_argument("--start-maximized")
@@ -203,16 +203,16 @@ def run_extractor( url: str, paginas: int):
         full_page_text = []
 
         # tu lista de códigos (puedes ampliarla dinámicamente si quieres)
-        numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616"}
+        numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616","1630","1635"}
         remate_re = re.compile(r'^16\d{2}$')  # regla: 16xx se considera remate
         for i, column in enumerate(columns):
             if not column:
                 continue
             column.sort(key=lambda f: f['top'])
-            lines = [f['text'] for f in column]
+            # lines = [f['text'] for f in column]
 
-            for l in lines:
-                print("   ", l)
+            # for l in lines:
+            #     print("   ", l)
 
             # máquina de estados simple:
             output_lines = []
@@ -220,9 +220,10 @@ def run_extractor( url: str, paginas: int):
             seen_remate = False     # si vimos al menos un remate en esta columna
             last_special_code = None
 
-            for line in lines:
-                s = line.strip()
-                if s in numeros_especiales:
+            for frag in column:
+                s = frag['text'].strip()
+                UMBRAL_FONT_SIZE_TITULO = 12.0 
+                if s in numeros_especiales and frag['font_size'] > UMBRAL_FONT_SIZE_TITULO:
                     last_special_code = s
                     s_marcado = f"[CODE:{s}]"
                     if remate_re.match(s):   # es remate (16xx)
@@ -238,7 +239,7 @@ def run_extractor( url: str, paginas: int):
 
                 # línea NO es código especial
                 if capture:
-                    output_lines.append(line)
+                    output_lines.append(s)
 
             # Si no se detectó ningún remate en la columna, conservar sólo el último código especial (comportamiento anterior)
             if not seen_remate and last_special_code:
@@ -379,15 +380,18 @@ def run_extractor( url: str, paginas: int):
     except Exception as e:
         log_section(logger, "EXTRACT_ERROR")
         logger.error(f"❌ Error general durante la extracción: {e}")
+        
     finally:
         log_section(logger, "CLEANUP")
+
         try:
             driver.quit()
         except Exception:
             pass
+        
         logger.info(f"✅ Proceso completado. Texto guardado en: {OUTPUT_FILE}")
 
-    
+
     logger.info(f"✅ Previsualización finalizada. Continuando con el siguiente paso.")
     return OUTPUT_FILE
 
