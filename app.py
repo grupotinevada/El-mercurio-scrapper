@@ -101,16 +101,18 @@ class Api:
             # Extraer y validar los datos
             url = data.get("url", "").strip()
             paginas_str = data.get("paginas", "0")
+            columnas_str = data.get("columnas", "7").strip()  # Valor por defecto 8
 
             if not url:
                 return {'success': False, 'message': 'Error: La URL no puede estar vacía.'}
 
             num_paginas = int(paginas_str)
+            num_columnas = int(columnas_str)
 
             # Lanzar el hilo para procesar sin bloquear la UI
             thread = threading.Thread(
                 target=self._run_proceso_mercurio,
-                args=(url, num_paginas),
+                args=(url, num_paginas, num_columnas),
                 daemon=True
             )
             thread.start()
@@ -175,7 +177,7 @@ class Api:
                     mensaje_error = f"Error en el proceso Macal: {e}".replace("'", "\\'")
                     window.evaluate_js(f"finalizarProcesoMacal('{mensaje_error}', 'error')")
 
-    def _run_proceso_mercurio(self, url, paginas):
+    def _run_proceso_mercurio(self, url, paginas, columnas):
         """
         Ejecuta el orquestador y notifica a la UI si hubo cancelación o finalización.
         """
@@ -188,7 +190,7 @@ class Api:
                 window.evaluate_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
                 
         try:
-            resultado = main.orquestador_con_datos(url, paginas, cancel_event, enable_cleanup, progress_callback)
+            resultado = main.orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, progress_callback)
             # Al final, actualizar mensaje en la UI
             if cancel_event.is_set():
                 if window: # ✅ 3. Usa la variable window para llamar al método

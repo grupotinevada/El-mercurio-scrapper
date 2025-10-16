@@ -150,7 +150,7 @@ def pre_separar_remates_fusionados(texto: str) -> str:
     # CLAVES_SEPARADORES debería ser otra lista definida previamente
     todos_los_inicios = bloque_manual + CLAVES_SEPARADORES  
 
-    palabras_cierre = r"\b(Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b"
+    palabras_cierre = r"\b(?:Secretaría|Secretario\(a\)|La Actuaria|El Actuario)\b"
     patron_email = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     patron_telefono = r'(?:\+56\s?)?[29]\s?\d{4}\s?\d{4}'
     palabras_inicio = r"(?:{})".format("|".join(todos_los_inicios))

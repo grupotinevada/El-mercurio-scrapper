@@ -11,7 +11,7 @@ def recortar_remates(texto: str):
     """
     Versión más explícita de la lógica de recorte.
     """
-    patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES|1616"
+    patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES|[CODE:1616]"
     
     # --- LÍNEA MODIFICADA ---
     # Se añaden los nuevos códigos de fin al patrón, escapando los caracteres especiales [ y ]

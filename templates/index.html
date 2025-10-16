@@ -104,6 +104,10 @@
                     <label for="paginas" class="form-label">Páginas a procesar</label>
                     <input type="number" class="form-control" id="paginas" placeholder="Número de páginas" required>
                   </div>
+                  <div class="mb-3">
+                    <label for="paginas" class="form-label">Número de columnas</label>
+                    <input type="number" class="form-control" id="columnas" placeholder="Número de columnas" required>
+                  </div>
                   <div class="d-grid gap-2">
                     <button class="btn btn-outline-primary fw-bold" id="submitBtn" onclick="enviar()">Procesar</button>
                     <button class="btn btn-outline-secondary fw-bold" id="openFolderBtn" onclick="abrirResultados()">
@@ -173,6 +177,7 @@
     const data = {
       url: document.getElementById('url').value,
       paginas: document.getElementById('paginas').value,
+      columnas: document.getElementById('columnas').value,
       };
 
     submitButton.disabled = true;

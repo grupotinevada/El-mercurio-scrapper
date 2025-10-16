@@ -24,7 +24,7 @@ import tempfile
 from dotenv import load_dotenv
 from collections import Counter
 
-def run_extractor( url: str, paginas: int):
+def run_extractor( url: str, paginas: int, columnas: int):
     from logger import get_logger, log_section, dbg
 
     logger = get_logger("paso1", log_dir="logs", log_file="paso1.log")
@@ -58,6 +58,7 @@ def run_extractor( url: str, paginas: int):
     EMAIL = os.getenv("USUARIO") 
     PASSWORD = os.getenv("PASSWORD") 
     PAGINAS_A_PROCESAR = paginas
+    COLUMNAS = columnas
     OUTPUT_FILE = "remates_extraidos.txt"
     DEBUG_SCREENSHOTS = True
 
@@ -65,7 +66,7 @@ def run_extractor( url: str, paginas: int):
         marco_horizontal = "═" * 50
         logger.info(f"\n{marco_horizontal}\n")
         logger.info("Empezando el proceso de extracción de remates judiciales...")
-        logger.info(f"Datos de entrada:\n URL: {URL}, \n Usuario: {EMAIL}, \n Páginas a procesar: {PAGINAS_A_PROCESAR}")
+        logger.info(f"Datos de entrada:\n URL: {URL}, \n Usuario: {EMAIL}, \n Páginas a procesar: {PAGINAS_A_PROCESAR} \n Columnas: {COLUMNAS}")
         
 
     modo_predeterminado()
@@ -131,7 +132,9 @@ def run_extractor( url: str, paginas: int):
         y limpieza robusta basada en tu lista de códigos especiales.
         (Incluye DEBUG prints)
         """
-        NUM_COLUMNAS_ESPERADAS = 7
+
+        print("Columnas al asignar columnas esperadas:", COLUMNAS)
+        NUM_COLUMNAS_ESPERADAS = COLUMNAS  # Parámetro ajustable según el diario
 
         # 1. Extraer TODOS los fragmentos
         all_fragments = []
