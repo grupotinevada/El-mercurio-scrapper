@@ -106,7 +106,12 @@ def generar_prompt_remate(texto_remate: str) -> str:
                 Comuna → Región (solo si es inequívoca)
                 Abreviaciones conocidas de tribunales
                 Conversión de números ordinales a formato estándar
-        8.- INSTRUCCIÓN FINAL
+        8.- REGLA CRÍTICA DE AMBIGÜEDAD (DIRECCIÓN):
+            - El texto a menudo contiene DOS direcciones: la del TRIBUNAL (ej: "Huérfanos 1409") y la de la PROPIEDAD a rematar.
+            - La dirección del TRIBUNAL (donde se hace la audiencia) NUNCA debe ir en el campo direccion de la propiedad.
+            - Si el texto SOLO menciona la dirección del tribunal, pero NO la dirección de la propiedad, el campo direccion de la propiedad debe ser NO SE PUDO RECUPERAR
+            - Si la dirección indica que es solo un acceso, recoger igual pero aclarar qu es un acceso, por ejemplo, "Acceso por Calle Larga 123"  "[ACCESO] Calle Larga 123"
+        9.- INSTRUCCIÓN FINAL
             -haz una pequeña validacion de los datos, contrasta con el remate solo para verificar.
             -Respeta el esquema JSON.
             -Procesa el siguiente texto de remate y devuelve ÚNICAMENTE el JSON resultante, en español, siguiendo todas las reglas establecidas:

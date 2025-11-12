@@ -45,7 +45,10 @@ CLAVES_SEPARADORES = [
     r"(REMATE|LICITACI[ÓO]N\s+REMATE|OFERTA\s+REMATE|VENTA\s+EN\s+REMATE)",
     r"JUEZ\s+[ÁA]RBITRO\s+[A-ZÁÉÍÓÚÑ\s]+",
     r"REMATE\s+ANTE\s+JUEZ\s+PARTIDOR",
-    r"VIG[ÉE]SIMO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|S[ÉE]PTIMO|OCTAVO|NOVENO)\s+JUZGADO\s+CIVIL"
+    r"VIG[ÉE]SIMO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|S[ÉE]PTIMO|OCTAVO|NOVENO)\s+JUZGADO\s+CIVIL",
+    r"NOTIFICACI[ÓO]N[.:]?\s+VIG[ÉE]SIMO\s+S[ÉE]PTIMO",
+    r"\bPARTIDOR\b",
+    r"CUARTO\s+REMATE\s+P[ÚU]BLICO[,;]?\s*NUEVO"
 ]
 
 
@@ -144,8 +147,13 @@ def pre_separar_remates_fusionados(texto: str) -> str:
         r"REMATE[:.]?",
         r"JUEZ PARTIDOR",
         r"JUEZ ARBITRO",
-        r"LICITACI[ÓO]N\s+REMATE"
+        r"LICITACI[ÓO]N\s+REMATE",
+        r"POR RESOLUCI[ÓO]N\sDEL\s4°\sJUZGADO",
+        r"NOTIFICACI[ÓO]N[.:]?\s+VIG[ÉE]SIMO\s+S[ÉE]PTIMO",
+        r"\bPARTIDOR\b",
+        r"CUARTO\s+REMATE\s+P[ÚU]BLICO[,;]?\s*NUEVO"
     ]
+
     
     # CLAVES_SEPARADORES debería ser otra lista definida previamente
     todos_los_inicios = bloque_manual + CLAVES_SEPARADORES  
@@ -221,25 +229,18 @@ def limpieza(texto: str) -> str:
     texto = re.sub(r'\[CODE:1616\]', '', texto)
     texto = re.sub(r'\[CODE:', '', texto)
     texto = re.sub(r'1616\]', '', texto)
-
     # 2. Compactar saltos de línea excesivos
     texto = re.sub(r"\n\s*\n+", "\n\n", texto)
-
     # 3. Unificar puntos suspensivos
     texto = re.sub(r"\s*\.\.\s*", " ", texto)
-
     # 4. Normalizar espacios múltiples
     texto = re.sub(r"\s{2,}", " ", texto)
-
     # 5. Corregir espacios antes de signos de puntuación
     texto = re.sub(r"\s+([,.;:])", r"\1", texto)
-
     # 7. Normalizar horas con espacios
     texto = re.sub(r"(\d{1,2}):\s*(\d{2})", r"\1:\2", texto)
-
     # 8. Corregir formato de montos en pesos
     texto = re.sub(r"\$\s*([\d\.]+)\s*-\s*", r"$\1", texto)
-    
     texto = re.sub(r"\s{2,}", " ", texto)
 
     return texto
@@ -265,7 +266,6 @@ def limpiar_encabezados_y_guardar(
     logger.info(f"Iniciando limpieza de encabezados para: {input_path}")
     with open(input_path, "r", encoding="utf-8") as f:
         texto = f.read()
-        
     texto_cortado = recortar_remates(texto) 
     texto_limpio = limpiar_encabezados(texto_cortado)
     texto_clean = limpieza(texto_limpio)

@@ -4,19 +4,18 @@ import math
 import time
 import random
 import unicodedata
-from datetime import datetime
-import backoff  # nuevo
-from logger import get_logger, log_section, dbg
+from datetime import datetime, timedelta 
+import re 
+import backoff
+from logger import get_logger
+import os
 
 logger = get_logger("macal", log_dir="logs", log_file="macal.log")
 
-# --- Constantes globales ---
-TEST_MODE = False
+TEST_MODE = False 
 TEST_LIMIT = 3
 MIN_DELAY = 2
 MAX_DELAY = 5
-GENERAL_FEATURES_TO_KEEP = {'superficie_util', 'dormitorios', 'banos', 'cocina', 'estacionamiento', 'bodega'}
-OTHER_FEATURES_TO_KEEP = {'disponibilidad', 'mandante', 'rol_de_avaluo', 'plazo_de_pago', 'liquidador'}
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0 Safari/537.36",
@@ -34,10 +33,11 @@ BASE_HEADERS = {
 # --- Wrapper robusto ---
 @backoff.on_exception(
     backoff.expo,
-    (requests.exceptions.RequestException,),
+    (requests.exceptions.RequestException),
     max_tries=5,
     jitter=None
 )
+
 def robust_get(session, url, **kwargs):
     headers = BASE_HEADERS.copy()
     headers["User-Agent"] = random.choice(USER_AGENTS)
@@ -63,10 +63,21 @@ def robust_get(session, url, **kwargs):
 def _normalize_key(text):
     if not text:
         return ""
+    
     s = text.lower().strip().replace(' ', '_')
+    s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
     if 'rol' in s and 'avaluo' in s:
-        s = 'rol_de_avaluo'
-    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+        return 'rol_de_avaluo'
+    
+    if 'superficie_total' in s or 'superficie_terreno' in s:
+        return 'superficie_terreno'
+    if 'superficie_util' in s or 'superficie_construida' in s:
+        return 'superficie_util'
+    
+    s = s.replace('/', '_').replace(':', '').replace('-', '_')
+    
+    return s
 
 def _flatten_features(feature_list):
     flat_dict = {}
@@ -80,33 +91,46 @@ def _flatten_features(feature_list):
                 flat_dict[key] = value
     return flat_dict
 
+def _calculate_estimated_payment_date(property_info: dict) -> str:
+    """
+    Calcula la fecha de pago estimada basándose en la fecha de remate y el plazo.
+    """
+    default_message = "No se pudo calcular"
+    try:
+        fecha_remate_str = property_info.get('fecha_remate')
+        plazo_pago_str = property_info.get('plazo_de_pago')
+
+        if not fecha_remate_str or not plazo_pago_str or \
+           fecha_remate_str == "No se encontró" or plazo_pago_str == "No se encontró":
+            return default_message
+
+        base_date = datetime.strptime(fecha_remate_str, "%d/%m/%Y")
+
+        match = re.search(r'\d+', plazo_pago_str)
+        if not match:
+            return plazo_pago_str 
+        
+        days_to_add = int(match.group(0))
+        estimated_date = base_date + timedelta(days=days_to_add)
+        return estimated_date.strftime("%d/%m/%Y")
+
+    except Exception as e:
+        logger.warning(f"No se pudo calcular la fecha de pago estimada. Error: {e}")
+        return default_message
+
 def update_excel_with_new_properties(output_filename: str, new_data: list, id_field: str = "url_propiedad"):
-    import os
-    """
-    Actualiza un archivo Excel con nuevas propiedades, evitando duplicados.
-    
-    Args:
-        output_filename (str): Ruta del archivo Excel.
-        new_data (list[dict]): Lista de propiedades nuevas en formato dict.
-        id_field (str): Campo único que identifica cada propiedad (por defecto 'url_propiedad').
-    
-    Returns:
-        pd.DataFrame: DataFrame final actualizado (o None si no hubo cambios).
-    """
     if not new_data:
         logger.info("No hay nuevas propiedades para agregar.")
         return None
 
     df_new = pd.DataFrame(new_data)
 
-    # Si no hay archivo previo, creamos uno nuevo
     if not os.path.exists(output_filename):
         df_new.to_excel(output_filename, index=False, engine='openpyxl')
         logger.info(f"Archivo creado con {len(df_new)} propiedades nuevas.")
         return df_new
 
     try:
-        # Leer archivo existente
         df_existing = pd.read_excel(output_filename)
 
         if id_field in df_existing.columns:
@@ -114,15 +138,18 @@ def update_excel_with_new_properties(output_filename: str, new_data: list, id_fi
         else:
             existing_ids = set()
         
-        # Filtrar solo las propiedades que no existan
         df_new_unique = df_new[~df_new[id_field].astype(str).isin(existing_ids)]
 
         if df_new_unique.empty:
             logger.info("Todas las propiedades nuevas ya estaban en el archivo.")
             return df_existing
+        
+        all_cols = pd.Index(df_existing.columns).union(df_new_unique.columns)
+        
+        df_existing_aligned = df_existing.reindex(columns=all_cols)
+        df_new_unique_aligned = df_new_unique.reindex(columns=all_cols)
 
-        # Concatenar y guardar
-        df_final = pd.concat([df_existing, df_new_unique], ignore_index=True)
+        df_final = pd.concat([df_existing_aligned, df_new_unique_aligned], ignore_index=True)
         df_final.to_excel(output_filename, index=False, engine='openpyxl')
 
         logger.info(f"Archivo actualizado con {len(df_new_unique)} propiedades nuevas (total: {len(df_final)}).")
@@ -138,11 +165,11 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
     session = requests.Session()
     all_property_ids = []
     
+    failed_ids = []
+
     if progress_callback:
         progress_callback(0, "Obteniendo lista de propiedades...")
-
     
-    # Paso 1: IDs
     logger.info("Iniciando la obtención de IDs de propiedades...")
     try:
         params_initial = {'page': 1, 'tipoOrden': 0, 'hasFilters': 'false'}
@@ -174,7 +201,6 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         logger.warning(f"MODO DE PRUEBA ACTIVO: Se procesarán solo las primeras {TEST_LIMIT} propiedades.")
         all_property_ids = all_property_ids[:TEST_LIMIT]
 
-    # Paso 2: Detalles
     extracted_data = []
     total_ids = len(all_property_ids)
     logger.info(f"Iniciando extracción de detalles para {total_ids} propiedades...")
@@ -207,7 +233,6 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
                     formatted_date = date_obj.strftime("%d/%m/%Y")
                 except ValueError:
                     formatted_date = raw_auction_date.split('T')[0]
-                    
                     logger.warning(f"Formato de fecha inesperado para la propiedad ID {prop_id}: {raw_auction_date}. Usando valor crudo.")
                     end_time = time.perf_counter()
                     logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
@@ -216,61 +241,74 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
             property_info = {
                 "direccion": details.get("property_name", "No se encontró"),
                 "comuna": details.get('property_location', {}).get('commune', 'No se encontró'),
+                "ciudad": details.get('property_location', {}).get('city', 'No se encontró'),
+                "region": details.get('property_location', {}).get('region', 'No se encontró'),
                 "tipo_propiedad": details.get("property_type", "No se encontró"),
-                "precio": f"{price_info.get('price', 'N/A')} {price_info.get('price_type', '')}".strip(),
+                "precio_minimo": f"{price_info.get('price', 'N/A')} {price_info.get('price_type', '')}".strip(), 
                 "garantia_clp": details.get("warranty_price", "No se encontró"),
                 "fecha_remate": formatted_date,
                 "descripcion": (details.get("property_description") or "No se encontró").strip(),
                 "url_propiedad": f"https://www.macal.cl/propiedades/{prop_id}"
             }
-
-            default_value = "No se encontró"
             general_features_flat = _flatten_features(details.get("general_features") or [])
-            for key in GENERAL_FEATURES_TO_KEEP:
-                property_info[key] = general_features_flat.get(key, default_value)
-
             other_features_flat = _flatten_features(details.get("other_features") or [])
-            for key in OTHER_FEATURES_TO_KEEP:
-                property_info[key] = other_features_flat.get(key, default_value)
+            specific_features_flat = _flatten_features(details.get("specific_features") or [])
+
+            all_features = {
+                **general_features_flat, 
+                **specific_features_flat, 
+                **other_features_flat
+            }
+            property_info.update(all_features)
+            property_info['fecha_pago_estimado(fecha_remate + plazo_de_pago)'] = _calculate_estimated_payment_date(property_info)
 
             extracted_data.append(property_info)
             time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
+            
         except Exception as e:
             logger.error(f"Error al obtener detalles para la propiedad ID {prop_id}: {e}")
+            failed_ids.append(prop_id) 
             end_time = time.perf_counter()
             logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
             continue
 
-    df = pd.DataFrame(extracted_data)
-
-    if df is not None and not df.empty:
-        try:
-            preferred_order = [
-                'direccion', 'comuna', 'tipo_propiedad', 'precio', 'fecha_remate', 'garantia_clp',
-                'superficie_util', 'dormitorios', 'banos', 'cocina', 'estacionamiento', 'bodega',
-                'disponibilidad', 'mandante', 'liquidador', 'rol_de_avaluo', 'plazo_de_pago',
-                'descripcion', 'url_propiedad'
-            ]
-            final_columns = [col for col in preferred_order if col in df.columns] + \
-                            [col for col in df.columns if col not in preferred_order]
-            df = df[final_columns]
-
-            update_excel_with_new_properties(output_filename, df.to_dict(orient="records"))
-            logger.info(f"Archivo guardado: '{output_filename}'")
-            end_time = time.perf_counter()
-            logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
-            
-        except Exception as e:
-            logger.error(f"Error al guardar el archivo Excel: {e}")
-            end_time = time.perf_counter()
-            logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
-    else:
-        logger.warning("El proceso finalizó sin datos para guardar o con un error crítico.")
+    if not extracted_data:
+        logger.warning("El proceso finalizó sin datos nuevos para procesar.")
         end_time = time.perf_counter()
         logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
+        return None
+
+    df = pd.DataFrame(extracted_data)
+    try:       
+        preferred_order = [
+            'descripcion','direccion', 'comuna', 'ciudad', 'region', 'tipo_propiedad', 'precio_minimo', 
+            'fecha_remate', 'plazo_de_pago', 'fecha_pago_estimado(fecha_remate + plazo_de_pago)', 
+            'garantia_clp', 'superficie_terreno', 'superficie_util', 
+            'dormitorios', 'banos', 'cocina', 'estacionamiento', 'bodega',
+            'disponibilidad', 'mandante', 'liquidador', 'rol_de_avaluo','rol_causa', 'uso_de_suelo',
+            'url_propiedad'
+        ]
+        final_columns_ordered = [col for col in preferred_order if col in df.columns]
+        remaining_columns = sorted([col for col in df.columns if col not in final_columns_ordered])
+        
+        df = df[final_columns_ordered + remaining_columns]
+
+        update_excel_with_new_properties(output_filename, df.to_dict(orient="records"))
+        logger.info(f"Archivo guardado: '{output_filename}'")
+        
+    except Exception as e:
+        logger.error(f"Error al guardar el archivo Excel: {e}")
+    finally:
+        end_time = time.perf_counter()
+        logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
+        if failed_ids:
+            logger.warning(f"Proceso completado con {len(failed_ids)} propiedades fallidas.")
+            logger.warning(f"Lista de IDs fallidos: {failed_ids}")
+        else:
+            logger.info("Proceso completado exitosamente sin propiedades fallidas.")
     return df
 
-# --- Ejemplo de ejecución ---
+
 if __name__ == "__main__":
     SEARCH_URL = "https://api-net.macal.cl/api/v1/properties/search"
     DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
