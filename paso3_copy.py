@@ -42,7 +42,7 @@ def generar_prompt_remate(texto_remate: str) -> str:
             PRECISIÓN ABSOLUTA - Mejor campo vacío que dato incorrecto
             UN OBJETO JSON POR INMUEBLE - Si hay múltiples propiedades, crear array con objetos separados
             SI EL DATO NO EXISTE EN EL TEXTO, DEJARLO COMO "No se menciona", si el campo es numerico dejarlo como 0
-        
+    
         ESQUEMA DE EXTRACCIÓN
         
         1.- IDENTIFICACIÓN DEL REMATE
@@ -54,6 +54,7 @@ def generar_prompt_remate(texto_remate: str) -> str:
             -Sin número: "Juzgado de Letras de Rancagua"
             -Convertir ordinales: "DÉCIMO SEXTO" → "16°", "SEGUNDO" → "2°"
             -si no se menciona, no inferir, dejar el campo "No se menciona"
+
         2.- DATOS DE LA PROPIEDAD
             -tipo_propiedad: SOLO valores permitidos:
             -departamento | casa | parcela | sitio | terreno | patio | condominio | bodega | galpón | loteo | estacionamiento | oficina
@@ -62,16 +63,19 @@ def generar_prompt_remate(texto_remate: str) -> str:
             -villa_barrio_condominio: Nombre de villa, barrio o condominio si se menciona
             -comuna: Extraer literal del texto
             -region: Solo inferir si comuna es inequívocamente identificable
+
         3.- VALORES MONETARIOS
             -Reglas de detección:
             -UF: Presencia de "UF" + números decimales (ej: "2.500,50 UF")
             -CLP: Símbolo "$" + números con puntos (ej: "$150.000.000")
             -postura_minima_uf: Valor en UF si existe, "0" si solo hay CLP
             -postura_minima_clp: Valor en CLP si existe, "0" si solo hay UF
+
         4.- FECHAS Y HORARIOS
             -fecha_remate: Formato ISO 8601 (YYYY-MM-DD)
             -comentario.fecha_hora_remate: Con hora si disponible (YYYY-MM-DDTHH:MM)
             -Si no hay fecha/hora específica: null
+
         5.- MODALIDADES DE PAGO
             -forma_pago_garantia: Valores exactos permitidos:
             -"Vale Vista Endosable" = Sin endoso, no trasferible,
@@ -85,27 +89,33 @@ def generar_prompt_remate(texto_remate: str) -> str:
             -Copiar frase RELATIVA o LITERAL del texto (ej: "quinto día hábil siguiente al remate", "5to dia hábil siguiente al remate", etc)
             -NO calcular fechas específicas
             -null si no aparece
+
         6.- INFORMACIÓN COMPLEMENTARIA
             -diario: Nombre del diario oficial donde se publicó el remate
             -comentario.link_zoom:
             -URL completa o ID de Zoom si existe
             -"Necesario contactar" si no hay enlace
             -comentario.fecha_hora_remate: Fecha y hora específica del remate si disponible
-        7.- CASOS ESPECIALES
-            7.1 .-Múltiples Inmuebles
-                Si un remate incluye varios inmuebles (ej: departamento + estacionamiento):
-                Crear objeto separado para cada propiedad
-                Mantener datos comunes (causa, tribunal, fecha, etc.)
-                Diferenciar en tipo_propiedad y descripción.
-                Estar atento a la direccion, revisar si entre propiedades cambian si no, se mantiene la general.
-            7.2 .- Datos Faltantes
-                String fields: null
-                Campos numéricos: usar 0 para garantia_porcentaje si no se especifica
-                Campos requeridos siempre deben tener valor o null
-                Inferencias Permitidas (ÚNICAMENTE)
-                Comuna → Región (solo si es inequívoca)
-                Abreviaciones conocidas de tribunales
-                Conversión de números ordinales a formato estándar
+
+        7.- CASOS ESPECIALES Y JERARQUÍA DE LOTES
+            7.1 .- Estructura de Lotes ("Uno", "Dos", "Lote A", "Lote B")
+                - Muchos remates subastan varios lotes independientes ("Uno: Depto X...", "Dos: Depto Y...").
+                - Cada lote tiene su propio precio mínimo y garantías.
+                - REGLA: Debes identificar a qué lote pertenece cada propiedad y asignarle EL PRECIO MÍNIMO DE ESE LOTE ESPECÍFICO.
+                - NO asignes el precio del "Lote Uno" a las propiedades del "Lote Dos".
+            7.2 .- Desagregación de Inmuebles (REGLA DE ATOMICIDAD)
+                - Dentro de un mismo lote (o si es un remate único), pueden venir varias unidades físicas (Depto, Bodega, Estacionamiento).
+                - Aunque el texto diga "se remata como un todo" o "en bloque", DEBES CREAR UN OBJETO JSON SEPARADO PARA CADA UNIDAD FÍSICA con número propio.
+                - Ejemplo: Si el Lote 1 incluye "Depto 202 y Bodega 99" por $100MM:
+                    * Objeto 1: Depto 202 | Precio: $100MM
+                    * Objeto 2: Bodega 99 | Precio: $100MM
+                - Nota sobre "Uso y Goce": Si se menciona el "uso y goce de estacionamiento Nº X", extráelo como una propiedad tipo "estacionamiento".
+
+            7.3 .- Datos Comunes vs. Específicos
+                - Datos Comunes (se repiten en todos): Causa, Tribunal, Fecha Remate.
+                - Datos de Lote (se repiten en las propiedades del mismo lote): Precio Mínimo, Garantía.
+                - Datos Únicos (varían por fila): Tipo Propiedad, Nombre Propiedad, Dirección (si cambia por lote).
+
         8.- REGLA CRÍTICA DE AMBIGÜEDAD (DIRECCIÓN):
             - El texto a menudo contiene DOS direcciones: la del TRIBUNAL (ej: "Huérfanos 1409") y la de la PROPIEDAD a rematar.
             - La dirección del TRIBUNAL (donde se hace la audiencia) NUNCA debe ir en el campo direccion de la propiedad.
