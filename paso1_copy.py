@@ -128,21 +128,25 @@ def run_extractor( url: str, paginas: int, columnas: int):
     
     def capture_text_from_textlayer(viewer_div):
         """
-        Versión corregida: detección de columnas por clustering (k-means)
-        y limpieza robusta basada en tu lista de códigos especiales.
-        (Incluye DEBUG prints)
+        Versión con LOGS DE PROCESO para depuración detallada.
         """
+        # Si 'logger' no es global, descomentar la siguiente línea o pasarlo como argumento
+        # from logger import get_logger; logger = get_logger("paso1_debug")
 
-        print("Columnas al asignar columnas esperadas:", COLUMNAS)
-        NUM_COLUMNAS_ESPERADAS = COLUMNAS  # Parámetro ajustable según el diario
+        logger.info(f"📊 [DEBUG] Iniciando captura de texto. Columnas esperadas: {COLUMNAS}")
+        NUM_COLUMNAS_ESPERADAS = COLUMNAS  
 
         # 1. Extraer TODOS los fragmentos
         all_fragments = []
-        text_layer = viewer_div.find_element(By.CLASS_NAME, "textLayer")
-        divs = text_layer.find_elements(By.TAG_NAME, "div")
+        try:
+            text_layer = viewer_div.find_element(By.CLASS_NAME, "textLayer")
+            divs = text_layer.find_elements(By.TAG_NAME, "div")
+            logger.info(f"   🔍 [RAW] Elementos 'div' encontrados en textLayer: {len(divs)}")
+        except Exception as e:
+            logger.error(f"   ❌ Error accediendo a textLayer: {e}")
+            return ""
 
-
-        for div in divs:
+        for i, div in enumerate(divs):
             style = div.get_attribute('style')
             text = div.text.strip()
             if not text:
@@ -151,42 +155,59 @@ def run_extractor( url: str, paginas: int, columnas: int):
                 top = float(re.search(r'top:\s*([\d\.]+)px', style).group(1))
                 left = float(re.search(r'left:\s*([\d\.]+)px', style).group(1))
                 font_size_match = re.search(r'font-size:\s*([\d\.]+)px', style)
-                font_size = float(font_size_match.group(1)) if font_size_match else 0
+                font_size = float(font_size_match.group(1)) if font_size_match else 0.0
+                
+                # Loguear solo los primeros 3 para verificar que el regex funciona
+                if i < 3: 
+                    logger.debug(f"      🔹 Muestra div[{i}]: '{text[:20]}...' | T:{top} L:{left} FS:{font_size}")
+                
                 all_fragments.append({'text': text, 'top': top, 'left': left, 'font_size': font_size})
 
-            except (AttributeError, ValueError):
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"      ⚠️ Error parseando estilo de div[{i}]: {e}")
                 continue
 
         if not all_fragments:
-
+            logger.warning("   ⚠️ No se extrajeron fragmentos válidos (all_fragments vacío).")
             return ""
 
         # 2. Filtrar por font-size más común Y títulos numéricos
+        logger.info("   ⚙️ [FILTRO] Analizando tamaños de fuente...")
         if not any(f['font_size'] > 0 for f in all_fragments):
+            logger.warning("      ⚠️ No se detectaron font-sizes > 0. Usando todos los fragmentos.")
             filtered_fragments = all_fragments
-
         else:
             font_size_counts = Counter(f['font_size'] for f in all_fragments if f['font_size'] > 0)
             main_font_size = font_size_counts.most_common(1)[0][0]
+            logger.info(f"      🎯 Font-size principal detectado: {main_font_size}px")
 
             filtered_fragments = []
             for frag in all_fragments:
                 is_main_font = abs(frag['font_size'] - main_font_size) < 0.1
-                is_numeric_title = frag['text'].isdigit()
+                is_numeric_title = frag['text'].isdigit() # A veces los títulos de remate son números con otra font
                 if is_main_font or is_numeric_title:
                     filtered_fragments.append(frag)
+            
+            logger.info(f"      📉 Fragmentos tras filtro: {len(filtered_fragments)} (de {len(all_fragments)} originales)")
 
         if len(filtered_fragments) < 2:
-
+            logger.warning("      ⚠️ Menos de 2 fragmentos tras filtrado. Retornando texto plano sin columnas.")
             return "\n".join(f['text'] for f in filtered_fragments)
 
         # 3. Clustering por columnas
-        left_coords = np.array([f['left'] for f in filtered_fragments]).reshape(-1, 1)
-        kmeans = KMeans(n_clusters=NUM_COLUMNAS_ESPERADAS, n_init='auto', random_state=0)
-        kmeans.fit(left_coords)
-        column_centers = sorted(kmeans.cluster_centers_.flatten())
-        dividers = [(column_centers[i] + column_centers[i+1]) / 2 for i in range(len(column_centers)-1)]
-
+        logger.info("   🧮 [KMEANS] Calculando columnas...")
+        try:
+            left_coords = np.array([f['left'] for f in filtered_fragments]).reshape(-1, 1)
+            kmeans = KMeans(n_clusters=NUM_COLUMNAS_ESPERADAS, n_init='auto', random_state=0)
+            kmeans.fit(left_coords)
+            column_centers = sorted(kmeans.cluster_centers_.flatten())
+            dividers = [(column_centers[i] + column_centers[i+1]) / 2 for i in range(len(column_centers)-1)]
+            
+            logger.info(f"      📍 Centros de columna detectados (X): {[round(c,1) for c in column_centers]}")
+            logger.info(f"      ✂️ Divisores calculados: {[round(d,1) for d in dividers]}")
+        except Exception as e:
+            logger.error(f"      ❌ Error en KMeans: {e}. Retornando texto plano.")
+            return "\n".join(f['text'] for f in filtered_fragments)
 
         # 4. Asignar fragmentos a columnas
         num_columns = len(column_centers)
@@ -200,68 +221,80 @@ def run_extractor( url: str, paginas: int, columnas: int):
                     break
             if col_index < num_columns:
                 columns[col_index].append(frag)
+        
+        # Log de distribución
+        distribucion = [len(c) for c in columns]
+        logger.info(f"      📦 Distribución de items por columna: {distribucion}")
 
 
         # 5. Armar texto columna por columna y limpiar con lógica por códigos especiales
         full_page_text = []
-
-        # tu lista de códigos (puedes ampliarla dinámicamente si quieres)
-        numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616","1630","1635"}
+        numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616", "1630", "1635"}
         remate_re = re.compile(r'^16\d{2}$')  # regla: 16xx se considera remate
+
+        logger.info("   📝 [ENSAMBLAJE] Procesando texto columna por columna...")
+
         for i, column in enumerate(columns):
             if not column:
                 continue
+            
+            # Ordenar de arriba a abajo
             column.sort(key=lambda f: f['top'])
-            # lines = [f['text'] for f in column]
-
-            # for l in lines:
-            #     print("   ", l)
-
-            # máquina de estados simple:
+            
             output_lines = []
             capture = False          # True = estamos acumulando texto de remate
-            seen_remate = False     # si vimos al menos un remate en esta columna
+            seen_remate = False      # si vimos al menos un remate en esta columna
             last_special_code = None
+            
+            logger.debug(f"      Processing Col {i+1} ({len(column)} items)...")
 
             for frag in column:
                 s = frag['text'].strip()
-                UMBRAL_FONT_SIZE_TITULO = 12.0 
-                if s in numeros_especiales and frag['font_size'] > UMBRAL_FONT_SIZE_TITULO:
+                # Ajuste ligero: a veces el font size de titulos varia un poco, cuidado con el filtro estricto aqui
+                # Usamos el font_size del fragmento
+                
+                UMBRAL_FONT_SIZE_TITULO = 10.0 # Baje un poco el umbral por seguridad, ajustalo si es necesario
+                is_special_code = s in numeros_especiales
+                
+                if is_special_code and frag['font_size'] > UMBRAL_FONT_SIZE_TITULO:
                     last_special_code = s
                     s_marcado = f"[CODE:{s}]"
+                    
                     if remate_re.match(s):   # es remate (16xx)
-                        
+                        logger.info(f"         🟢 [START] Código de inicio detectado: {s} (Col {i+1})")
                         output_lines.append(s_marcado)
                         capture = True
                         seen_remate = True
                     else:
-                        # código especial pero NO remate -> ruido: desactivar captura
-                        
+                        logger.info(f"         🔴 [STOP] Código de fin/ruido detectado: {s} (Col {i+1})")
                         capture = False
-                    continue  # el código no se guarda si es ruido; si es remate ya se guardó
+                    continue
 
                 # línea NO es código especial
                 if capture:
                     output_lines.append(s)
 
-            # Si no se detectó ningún remate en la columna, conservar sólo el último código especial (comportamiento anterior)
+            # Si no se detectó ningún remate en la columna, conservar sólo el último código especial
             if not seen_remate and last_special_code:
-                
+                logger.debug(f"      ⚠️ Columna {i+1} sin remates. Conservando solo código: {last_special_code}")
                 output_lines = [last_special_code]
 
-            # Normalizar: eliminar duplicados consecutivos exactos (p.ej. '1616' seguido de '1616' sin texto entre)
+            # Normalizar
             normalized = []
             prev = None
             for L in output_lines:
                 if prev is not None and prev.strip() == L.strip():
-                    
                     continue
                 normalized.append(L)
                 prev = L
 
-            full_page_text.append("\n".join(normalized))
+            texto_columna = "\n".join(normalized)
+            full_page_text.append(texto_columna)
+            logger.debug(f"      ✅ Columna {i+1} procesada: {len(normalized)} líneas útiles.")
 
-        return "".join(full_page_text)
+        final_text = "".join(full_page_text)
+        logger.info(f"   🏁 [FIN] Texto capturado total: {len(final_text)} caracteres.")
+        return final_text
     
     
     # def limpiar_por_codigos(texto):
@@ -327,6 +360,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
     try:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f_out:
             try:
+                #input("\n⏸️  Presiona Enter para continuar con la extracción...")
                 logger.info("   🖼 Activando modo HD (si existe botón)...")
                 hd_button = wait.until(EC.element_to_be_clickable((By.ID, "active_pdf")))
                 driver.execute_script("arguments[0].click();", hd_button)
@@ -341,8 +375,29 @@ def run_extractor( url: str, paginas: int, columnas: int):
                 try:
                     logger.info("   🔍 Buscando el contenedor #viewer y .textLayer...")
                     viewer_div = wait.until(EC.presence_of_element_located((By.ID, "viewer")))
-                    time.sleep(0.5)
-                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#viewer .textLayer")))
+                    
+                    # 1. Esperamos a que la capa exista
+                    text_layer = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#viewer .textLayer")))
+                    
+                    # 2. VALIDACIÓN CRÍTICA: Esperar a que la capa tenga hijos (texto real)
+                    # Reintentamos hasta 10 veces (5 segundos aprox)
+                    texto_cargado = False
+                    for i in range(10):
+                        divs_texto = text_layer.find_elements(By.TAG_NAME, "div")
+                        if len(divs_texto) > 10: # Asumimos que una página válida tiene al menos 10 líneas
+                            texto_cargado = True
+                            logger.info(f"   ✅ Texto detectado: {len(divs_texto)} líneas encontradas.")
+                            break
+                        else:
+                            logger.warning(f"   ⏳ Esperando renderizado de texto (Intento {i+1}/10)...")
+                            time.sleep(0.5)
+                    
+                    if not texto_cargado:
+                        logger.error("   ❌ La capa de texto existe pero está vacía después de esperar.")
+                        # Opcional: guardar screenshot aquí para debug visual
+                        if DEBUG_SCREENSHOTS:
+                            guardar_screenshot(f"logs/debug_vacio_pag_{page_num}.png")
+
                 except Exception as e:
                     logger.error(f"❌ No se encontró viewer/textLayer: {e}")
                     if DEBUG_SCREENSHOTS:
