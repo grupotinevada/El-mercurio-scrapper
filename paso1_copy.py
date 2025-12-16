@@ -21,6 +21,7 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 import tempfile
+import shutil
 from dotenv import load_dotenv
 from collections import Counter
 
@@ -37,19 +38,32 @@ def run_extractor( url: str, paginas: int, columnas: int):
 # --------------------------------------------------------------------------
     chrome_options = Options()
 
-    # 1. Creas la ruta única para el perfil (esto está perfecto)
-    user_data_dir = os.path.join(tempfile.gettempdir(), f"chrome_profile_{os.getpid()}")
+    # 1. Definir una ruta fija para el perfil temporal
+    # Usamos un nombre constante para poder localizarlo y borrarlo en cada ejecución
+    clean_profile_path = os.path.join(tempfile.gettempdir(), "chrome_profile_remates_clean")
 
-    # 2. Le dices a Chrome que USE esa ruta 
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+    # 2. Lógica de limpieza agresiva: Borrar la carpeta si existe
+    if os.path.exists(clean_profile_path):
+        try:
+            logger.info(f"🧹 Limpiando caché, cookies y datos antiguos en: {clean_profile_path}")
+            shutil.rmtree(clean_profile_path)  # Esto borra TODO: Cookies, LocalStorage, Cache
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudo eliminar el perfil anterior (archivo en uso?): {e}")
+            # Si falla borrar (raro), creamos una ruta nueva con timestamp para asegurar limpieza
+            clean_profile_path = os.path.join(tempfile.gettempdir(), f"chrome_profile_remates_{int(time.time())}")
 
-    # El resto de tu configuración está bien
+    # 3. Asignar la ruta limpia a Chrome
+    chrome_options.add_argument(f"--user-data-dir={clean_profile_path}")
+    chrome_options.add_argument("--incognito")
+    # Opciones estándar
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--log-level=3")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
     service = Service(log_path="logs/chromedriver.log")
+    
+    # Iniciar driver
     driver = webdriver.Chrome(service=service, options=chrome_options)
     wait = WebDriverWait(driver, 25)
     
