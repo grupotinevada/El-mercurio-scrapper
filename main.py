@@ -1,10 +1,9 @@
 import paso1_copy
 import paso2_copy
 import paso3_copy
-# import paso1_valpo  # <-- Descomenta esto cuando crees el archivo para Valparaíso
-# import paso2_valpo  # <-- Descomenta esto cuando crees el archivo para Valparaíso
-
+import sys
 import os
+from valpoOCR import paso1_valpo, paso2_valpo
 import uuid
 from datetime import datetime
 from logger import get_logger
@@ -24,6 +23,7 @@ def cleanup_temp_files(logger, enable_cleanup: bool = True):
         "remates_extraidos.txt",
         "remates_limpio.txt",
         "remates_separados.json",
+        "remates_valpo_temp.txt" # Agregado para Valpo
     ]
 
     for archivo in archivos_a_eliminar:
@@ -68,29 +68,39 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
 # --- FLUJO 2: EL MERCURIO VALPARAÍSO (Nuevo flujo) ---
 def flujo_el_mercurio_valpo(url, paginas, cancel_event, progress_callback, logger):
     """
-    Lógica específica para mercuriovalpo.cl / mercurioantofagasta.cl
-    Debe usar un extractor con OCR (paso1_valpo) y una limpieza adaptada (paso2_valpo).
+    Lógica específica para mercuriovalpo.cl
+    Usa paso1_valpo (Navegación + Descarga) y paso2_valpo (Corte).
     """
-    logger.info("🟢 Iniciando flujo específico: El Mercurio de Valparaíso/Regional")
+    logger.info("🟢 Iniciando flujo específico: El Mercurio de Valparaíso")
     
-    # --- PASO 1: Extracción con OCR ---
-    logger.info("=" * 20 + " INICIANDO PASO 1: EXTRACCIÓN CON OCR (VALPO) " + "=" * 20)
-    progress_callback(5, 'Etapa 1: Extrayendo imágenes y OCR (Valpo)...')
+    # --- PASO 1: Extracción con Selenium (Navegación + Descarga) ---
+    logger.info("=" * 20 + " INICIANDO PASO 1: DESCARGA IMÁGENES " + "=" * 20)
+    progress_callback(5, 'Etapa 1: Descargando páginas (Valpo)...')
     
+    lista_imagenes = []
+    ruta_txt_debug = None
 
-    # TODO: Aquí llamarás a tu nuevo módulo:
-    # ruta_txt_bruto = paso1_valpo.run_extractor_ocr(url, paginas)
-    
-    # Como aún no existe, lanzamos un error controlado para aviso:
-    logger.warning("⚠️ El módulo paso1_valpo aún no está implementado.")
-    raise NotImplementedError("El soporte para Valparaíso (OCR) está en construcción.")
+    try:
+        # AHORA RECIBIMOS DOS VALORES: La lista (memoria) y el archivo (debug)
+        lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas)
+    except Exception as e:
+        logger.error(f"Error crítico en Paso 1 Valpo: {e}")
+        raise e
 
-    # --- PASO 2: Limpieza Específica ---
-    # logger.info("=" * 20 + " INICIANDO PASO 2: LIMPIEZA (VALPO) " + "=" * 20)
-    # progress_callback(33.3, 'Etapa 2: Limpiando texto OCR...')
-    # ruta_json_separado = paso2_valpo.procesar_remates_valpo(cancel_event, ruta_txt_bruto)
+    if not lista_imagenes:
+        raise Exception("El extractor de Valparaíso no obtuvo imágenes.")
+        
+    logger.info(f"✅ PASO 1 completado. Imágenes en memoria: {len(lista_imagenes)}")
+
+    # --- PASO 2: Procesamiento de Imágenes (Conexión por Memoria) ---
+    logger.info("=" * 20 + " INICIANDO PASO 2: PROCESAMIENTO IMAGEN " + "=" * 20)
+    progress_callback(30, 'Etapa 2: Procesando imágenes (Valpo)...')
     
-    # return ruta_json_separado, ruta_txt_bruto
+    # ✅ PASAMOS LA LISTA DIRECTAMENTE
+    ruta_json_separado = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes)
+    
+    # Retornamos ruta_txt_debug solo para que el cleanup lo borre al final si es necesario
+    return ruta_json_separado, ruta_txt_debug
 
 
 # --- ORQUESTADOR PRINCIPAL (Dispatcher) ---
@@ -111,7 +121,7 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
                 url, paginas, columnas, cancel_event, progress_callback, logger
             )
             
-        elif "mercuriovalpo.cl" in url :
+        elif "mercuriovalpo.cl" in url or "mercurioantofagasta.cl" in url:
             # ---> Flujo Valparaíso
             ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_valpo(
                 url, paginas, cancel_event, progress_callback, logger
@@ -126,8 +136,11 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             logger.warning("Proceso cancelado por el usuario antes del paso 3.")
             return
 
+        # Si el flujo devuelve None (como en el caso actual de Valpo), avisamos y salimos sin error crítico
         if not ruta_json_separado:
-            raise Exception("El flujo seleccionado no generó el archivo JSON intermedio.")
+            logger.warning("⏹️ El flujo finalizó temprano (posiblemente falta implementación de pasos siguientes).")
+            progress_callback(100, 'Proceso finalizado (etapas posteriores pendientes).')
+            return
 
         # 3. PASO 3: IA (ESTO ES REUTILIZABLE PARA AMBOS)
         # La IA recibe el JSON limpio, sin importar de qué diario vino.
@@ -189,8 +202,11 @@ if __name__ == "__main__":
     dummy_event = threading.Event()
     def dummy_callback(p, m): print(f"[{p}%] {m}")
     
+    # URL de prueba para verificar que entra al flujo de Valpo
+    test_url_valpo = "https://www.mercuriovalpo.cl/impresa/2023/12/01/papel/"
+    
     orquestador_con_datos(
-        url="https://digital.elmercurio.com/...", # Pon una URL de prueba aquí
+        url=test_url_valpo, 
         paginas=1,
         columnas=7,
         cancel_event=dummy_event,
