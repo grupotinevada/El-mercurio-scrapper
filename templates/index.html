@@ -1,206 +1,383 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <title>Extractor de Remates</title>
   <link rel="icon" type="image/x-icon" href="redes.ico">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  
-<style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-
-    /* Define tu nuevo color base para reutilizarlo */
+  <style>
+    /* --- FLUENT DESIGN SYSTEM TOKENS --- */
     :root {
-      --bs-orange: #fd7e14;
+      --fluent-bg: #f3f3f3;
+      --fluent-surface: #ffffff;
+      --fluent-border: #e5e5e5;
+      --fluent-text-primary: #1b1b1b;
+      --fluent-text-secondary: #5d5d5d;
+
+      /* Colores Principales */
+      --fluent-accent: #0067c0;
+      /* Mercurio Blue */
+      --fluent-accent-hover: #005a9e;
+
+      /* Identidad Macal (Preservada) */
+      --macal-orange: #fd7e14;
+      --macal-orange-hover: #e36d0d;
+
+      --fluent-radius: 8px;
+      --fluent-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
 
-    .btn-outline-orange {
-      /* Color del texto, borde y fondo en estado normal */
-      --bs-btn-color: var(--bs-orange);
-      --bs-btn-border-color: var(--bs-orange);
-      --bs-btn-hover-color: #fff; /* Texto blanco al pasar el mouse */
-      --bs-btn-hover-bg: var(--bs-orange); /* Fondo naranja al pasar el mouse */
-      --bs-btn-hover-border-color: var(--bs-orange);
-
-      /* Colores al presionar el botón */
-      --bs-btn-active-color: #fff;
-      --bs-btn-active-bg: var(--bs-orange);
-      --bs-btn-active-border-color: var(--bs-orange);
-      
-      /* Color del borde en estado :focus */
-      --bs-btn-focus-shadow-rgb: 253, 126, 20;
+    body {
+      background-color: var(--fluent-bg);
+      font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: var(--fluent-text-primary);
+      height: 100vh;
+      overflow: hidden;
+      /* Evita scrollbar global si no es necesario */
     }
 
-    /* Color del texto al pasar el mouse (hover) sobre la pestaña inactiva */
-    #macal-tab:hover {
-      border-color: transparent transparent #dee2e6; /* Mantiene el borde inferior por defecto de Bootstrap */
-      color: #fd9b4b; /* Un tono de naranja más suave para el hover */
+    /* Tarjeta Principal (Fluent Surface) */
+    .fluent-card {
+      background-color: var(--fluent-surface);
+      border: 1px solid var(--fluent-border);
+      border-radius: var(--fluent-radius);
+      box-shadow: var(--fluent-shadow);
+      padding: 0;
+      /* El padding lo manejan los hijos */
+      overflow: hidden;
     }
 
-    /* Estilo principal para la pestaña cuando está activa */
+    /* --- PESTAÑAS ESTILO FLUENT PIVOT --- */
+    .nav-tabs {
+      border-bottom: 1px solid var(--fluent-border);
+      padding: 0 16px;
+      background: #f9f9f9;
+      gap: 8px;
+    }
+
+    .nav-link {
+      border: none !important;
+      background: transparent !important;
+      color: var(--fluent-text-secondary);
+      font-weight: 500;
+      padding: 12px 16px;
+      position: relative;
+      transition: all 0.2s;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+
+    .nav-link:hover {
+      background-color: rgba(0, 0, 0, 0.04) !important;
+      color: var(--fluent-text-primary);
+    }
+
+    /* Pestaña Activa: Indicador inferior */
+    .nav-link.active {
+      color: var(--fluent-text-primary) !important;
+      background-color: white !important;
+      /* Efecto tarjeta */
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      font-weight: 600;
+    }
+
+    /* Indicador de color específico por pestaña */
+    #extractor-tab.active {
+      border-bottom: 3px solid var(--fluent-accent) !important;
+    }
+
     #macal-tab.active {
-      color: var(--bs-orange); /* Color del texto activo */
-      background-color: #fff; /* Fondo por defecto */
-      border-color: var(--bs-orange) var(--bs-orange) #fff; /* Borde naranja en la parte superior y lados */
+      border-bottom: 3px solid var(--macal-orange) !important;
+      color: var(--macal-orange) !important;
     }
 
-    .text-orange{
-      color: var(--bs-orange); 
+    #macal-tab:hover {
+      color: var(--macal-orange-hover);
     }
+
+    /* --- FORMULARIOS --- */
+    .form-control {
+      border: 1px solid var(--fluent-border);
+      border-radius: 4px;
+      padding: 8px 12px;
+      font-size: 14px;
+      transition: border 0.2s, box-shadow 0.2s;
+    }
+
+    .form-control:focus {
+      border-color: var(--fluent-accent);
+      box-shadow: 0 0 0 2px rgba(0, 103, 192, 0.1);
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fluent-text-secondary);
+      margin-bottom: 4px;
+    }
+
+    /* --- BOTONES --- */
+    .btn {
+      border-radius: 4px;
+      font-weight: 500;
+      padding: 8px 20px;
+      font-size: 14px;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+    }
+
+    /* Botones Mercurio (Azul) */
+    .btn-outline-primary {
+      color: var(--fluent-accent);
+      border-color: var(--fluent-accent);
+      background: white;
+    }
+
+    .btn-outline-primary:hover {
+      background-color: var(--fluent-accent);
+      color: white;
+      box-shadow: 0 2px 4px rgba(0, 103, 192, 0.2);
+    }
+
+    /* Botones Macal (Naranja) */
+    .btn-outline-orange {
+      color: var(--macal-orange);
+      border-color: var(--macal-orange);
+      background: white;
+    }
+
+    .btn-outline-orange:hover {
+      background-color: var(--macal-orange);
+      color: white;
+      box-shadow: 0 2px 4px rgba(253, 126, 20, 0.2);
+    }
+
+    /* Botón Carpeta (Neutro) */
+    .btn-outline-secondary {
+      color: var(--fluent-text-secondary);
+      border-color: var(--fluent-border);
+      background: #fafafa;
+    }
+
+    .btn-outline-secondary:hover {
+      background-color: #e0e0e0;
+      color: var(--fluent-text-primary);
+      border-color: #d0d0d0;
+    }
+
+    /* Overlay de Progreso (Glass) */
     #progress-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.7);
+      background-color: rgba(255, 255, 255, 0.85);
+      /* Fondo blanco translúcido */
+      backdrop-filter: blur(5px);
       z-index: 1050;
       display: none;
       justify-content: center;
       align-items: center;
       flex-direction: column;
-      color: white;
+      color: var(--fluent-text-primary);
     }
 
     #progress-percentage {
-      font-size: 2rem;
-      font-weight: bold;
-      margin-top: 1rem;
+      color: var(--fluent-accent);
+      font-family: 'Segoe UI Display', sans-serif;
     }
-
-    #progress-message {
-      font-size: 1rem;
-      margin-top: 0.5rem;
-    }
-
-</style>
+  </style>
 </head>
-<body class="text-light d-flex align-items-center justify-content-center min-vh-100" style="background-color: #d4d4d4;">
+
+<body class="d-flex align-items-center justify-content-center">
+
   <div class="container">
     <div class="row justify-content-center">
-      <div class="col-lg-6 col-md-8">
-        <div class="card bg shadow">
-          <div class="card-body">
-            
-            <ul class="nav nav-tabs" id="myTab" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="extractor-tab" data-bs-toggle="tab" data-bs-target="#extractor-tab-pane" type="button" role="tab" aria-controls="extractor-tab-pane" aria-selected="true">Extractor Mercurio</button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link text-orange" id="macal-tab" data-bs-toggle="tab" data-bs-target="#macal-tab-pane" type="button" role="tab" aria-controls="macal-tab-pane" aria-selected="false">Extractor Macal</button>
-              </li>
-            </ul>
+      <div class="col-lg-7 col-md-9">
 
+        <div class="fluent-card">
+
+          <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="extractor-tab" data-bs-toggle="tab"
+                data-bs-target="#extractor-tab-pane" type="button" role="tab" aria-controls="extractor-tab-pane"
+                aria-selected="true">
+                <i class="bi bi-newspaper me-2"></i>Mercurio
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="macal-tab" data-bs-toggle="tab" data-bs-target="#macal-tab-pane"
+                type="button" role="tab" aria-controls="macal-tab-pane" aria-selected="false">
+                <i class="bi bi-building me-2"></i>Macal
+              </button>
+            </li>
+          </ul>
+
+          <div class="card-body p-4">
             <div class="tab-content" id="myTabContent">
-              
-              <div class="tab-pane fade show active" id="extractor-tab-pane" role="tabpanel" aria-labelledby="extractor-tab" tabindex="0">
-                <div class="p-3">
-                  <h3 class="card-title text-center mb-4">Extractor de Remates Mercurio</h3>
-                  <div class="mb-3">
-                    <label for="url" class="form-label">URL del Mercurio</label>
-                    <input type="text" class="form-control" id="url" placeholder="URL El Mercurio" required>
+
+              <div class="tab-pane fade show active" id="extractor-tab-pane" role="tabpanel" tabindex="0">
+                <div class="text-center mb-4">
+                  <h4 class="mb-1 fw-semibold" style="color: var(--fluent-text-primary);">Extractor de Remates</h4>
+                  <small class="text-muted">El Mercurio (Santiago / Valparaíso)</small>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label for="url" class="form-label">
+                      URL del Diario (Visor Papel)
+                      <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" data-bs-placement="top"
+                        title="Ingrese la URL del visor digital del diario, justo en la primera pagina donde se encuentran los remates de propiedades"></i>
+                    </label>
+                    <div class="input-group">
+                      <span class="input-group-text bg-light border-end-0 text-secondary"><i
+                          class="bi bi-link-45deg"></i></span>
+                      <input type="text" class="form-control border-start-0 ps-0" id="url" placeholder="https://..."
+                        required>
+                    </div>
                   </div>
-                  <div class="mb-3">
-                    <label for="paginas" class="form-label">Páginas a procesar</label>
-                    <input type="number" class="form-control" id="paginas" placeholder="Número de páginas" required>
+
+                  <div class="col-12">
+                    <label for="paginas" class="form-label">Páginas a procesar <i class="bi bi-info-circle ms-1"
+                        data-bs-toggle="tooltip" data-bs-placement="top"
+                        title="Ingrese la cantidad de páginas que desea procesar, se definen desde la primera pagina con remates a la ultima con remates"></i></label>
+                    <input type="number" class="form-control" id="paginas" placeholder="Ej: 5" required>
                   </div>
-                  <div class="mb-3">
-                    <label for="paginas" class="form-label">Número de columnas</label>
-                    <input type="number" class="form-control" id="columnas" placeholder="Número de columnas" required>
+                  <div class="col-12">
+                    <label for="columnas" class="form-label">Columnas (Layout)
+                      <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" data-bs-placement="top"
+                        title="IMPORTANTE: Solo aplica en diario el mercurio Santiago, es el numero de columnas totales por hoja de diario"></i>
+                    </label>
+                    <input type="number" class="form-control" id="columnas" value="7" placeholder="Ej: 7" required>
                   </div>
-                  <div class="d-grid gap-2">
-                    <button class="btn btn-outline-primary fw-bold" id="submitBtn" onclick="enviar()">Procesar</button>
-                    <button class="btn btn-outline-secondary fw-bold" id="openFolderBtn" onclick="abrirResultados()">
-                      Abrir Carpeta de archivos 📂
+                </div>
+
+                <div class="d-grid gap-2 mt-4">
+                  <button class="btn btn-outline-primary" id="submitBtn" onclick="enviar()">
+                    <i class="bi bi-play-circle-fill me-2"></i>Iniciar Extracción
+                  </button>
+                  <button class="btn btn-outline-secondary" id="openFolderBtn" onclick="abrirResultados()">
+                    <i class="bi bi-folder2-open me-2"></i>Abrir Resultados
+                  </button>
+                </div>
+
+                <p id="status" class="mt-3 text-center small fw-medium text-secondary"></p>
+              </div>
+
+              <div class="tab-pane fade" id="macal-tab-pane" role="tabpanel" tabindex="0">
+                <div class="py-4 text-center">
+                  <div class="mb-3 text-warning">
+                    <i class="bi bi-buildings-fill" style="font-size: 3rem; color: var(--macal-orange);"></i>
+                  </div>
+                  <h5 class="fw-semibold">Portal Inmobiliario Macal</h5>
+                  <p class="text-secondary small mb-4 px-4">
+                    Este módulo extraerá automáticamente todas las propiedades disponibles y generará un reporte Excel.
+                  </p>
+
+                  <div class="d-grid gap-3 col-10 mx-auto">
+                    <button class="btn btn-outline-orange" id="macalBtn" onclick="ejecutarMacal()">
+                      <i class="bi bi-rocket-takeoff me-2"></i>Iniciar Proceso Macal
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="abrirResultadosMacal()">
+                      <i class="bi bi-folder-symlink me-2"></i>Carpeta Macal
                     </button>
                   </div>
-                  <p id="status" class="mt-3 text-center fw-bold"></p>
+                  <p id="macal-status" class="mt-3 text-center small fw-medium text-secondary"></p>
                 </div>
               </div>
-              
-              <div class="tab-pane fade" id="macal-tab-pane" role="tabpanel" aria-labelledby="macal-tab" tabindex="0">
-                <div class="p-4 text-center">
-                  <h5 class="text-dark">Extractor de Propiedades Macal</h5>
-                  <p class="text-secondary">
-                    Este proceso buscará todas las propiedades en el portal de Macal y las guardará en un archivo Excel.
-                  </p>
-                  <div class="d-grid gap-2">
-                     <button class="btn btn-outline-orange fw-bold" id="macalBtn" onclick="ejecutarMacal()">
-                        Iniciar Extracción Macal 🚀
-                     </button>
-                      <button class="btn btn-outline-secondary fw-bold" onclick="abrirResultadosMacal()">
-                        Abrir Carpeta de Macal 📂
-                     </button>
-                  </div>
-                   <p id="macal-status" class="mt-3 text-center fw-bold"></p>
-                </div>
-              </div>
+
             </div>
           </div>
         </div>
+
+        <div class="text-center mt-3">
+          <small class="text-muted" style="font-size: 11px;">&copy; 2025 Sistema Automatizado v2.0</small>
+        </div>
+
       </div>
     </div>
   </div>
 
   <div id="progress-overlay">
-    <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
       <span class="visually-hidden">Cargando...</span>
     </div>
     <div id="progress-percentage">0%</div>
-    <div id="progress-message">Iniciando...</div>
+    <div id="progress-message" class="text-secondary small">Iniciando...</div>
   </div>
 
-<script>
+  <script>
 
-  // Tu JavaScript no necesita ninguna modificación,
-  // ya que los IDs de los elementos del formulario siguen siendo los mismos.
+    // 1. LÓGICA DE DETECCIÓN DINÁMICA (NUEVO)
+    const urlInput = document.getElementById('url');
+    const colInput = document.getElementById('columnas');
 
-  let currentPercentage = 0;
-  let targetPercentage = 0;
-  let progressInterval = null;
-  
-  function actualizarMensajeUI(msg, tipo = 'info') {
-    const statusElement = document.getElementById('status');
-    statusElement.textContent = msg;
+    // Escuchar cada cambio en el input de URL en tiempo real
+    urlInput.addEventListener('input', function () {
+      const val = this.value.toLowerCase();
 
-    let clase = 'mt-3 text-center fw-bold text-dark';
-    if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
-    else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
-    else if (tipo === 'warning') clase = 'mt-3 text-center fw-bold text-warning';
+      // Si la URL es de Valparaíso
+      if (val.includes('mercuriovalpo.cl')) {
+        colInput.value = 7;
+        colInput.disabled = true; // Deshabilitar
+      } else {
+        // Si borra o cambia a otra URL, rehabilitamos
+        colInput.disabled = false;
+        // Opcional: Si quieres restaurar un valor por defecto al salir de Valpo, 
+        // podrías hacerlo aquí, pero dejarlo como está es buena UX también.
+      }
+    });
 
-    statusElement.className = clase;
-  }
+    let currentPercentage = 0;
+    let targetPercentage = 0;
+    let progressInterval = null;
 
-  async function enviar() {
-    const submitButton = document.getElementById('submitBtn');
+    function actualizarMensajeUI(msg, tipo = 'info') {
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = msg;
 
-    const data = {
-      url: document.getElementById('url').value,
-      paginas: document.getElementById('paginas').value,
-      columnas: document.getElementById('columnas').value,
+      let clase = 'mt-3 text-center fw-bold text-dark';
+      if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
+      else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
+      else if (tipo === 'warning') clase = 'mt-3 text-center fw-bold text-warning';
+
+      statusElement.className = clase;
+    }
+
+    async function enviar() {
+      const submitButton = document.getElementById('submitBtn');
+
+      const data = {
+        url: document.getElementById('url').value,
+        paginas: document.getElementById('paginas').value,
+        columnas: document.getElementById('columnas').value,
       };
 
-    submitButton.disabled = true;
-    actualizarMensajeUI('Iniciando proceso...');
-    actualizarProgreso(0, 'Validando datos...'); 
+      submitButton.disabled = true;
+      actualizarMensajeUI('Iniciando proceso...');
+      actualizarProgreso(0, 'Validando datos...');
 
-    try {
+      try {
         const response = await window.pywebview.api.procesar_formulario(data);
         if (!response.success) {
-            actualizarMensajeUI(response.message, 'error');
-            ocultarProgreso();
-            habilitarBoton()
+          actualizarMensajeUI(response.message, 'error');
+          ocultarProgreso();
+          habilitarBoton()
         } else {
-            // No hacer nada aquí, el backend se encarga del progreso
+          // No hacer nada aquí, el backend se encarga del progreso
         }
-        } catch (e) {
+      } catch (e) {
         actualizarMensajeUI('Error de comunicación con el backend.', 'error');
         ocultarProgreso();
         habilitarBoton()
         console.error(e);
-        } finally {
-            // No re-habilitar el botón aquí, se hace en el callback
-        }
+      } finally {
+        // No re-habilitar el botón aquí, se hace en el callback
+      }
     }
 
     async function abrirResultados() {
@@ -216,75 +393,75 @@
         actualizarMensajeUI('Error al comunicarse con el backend para abrir la carpeta.', 'error');
         console.error(e);
       }
-  }   
-  
+    }
+
     function habilitarBoton() {
       document.getElementById('submitBtn').disabled = false;
     }
 
-  function actualizarProgreso(porcentaje, mensaje) {
-    const overlay = document.getElementById('progress-overlay');
-    const percentageEl = document.getElementById('progress-percentage');
-    const messageEl = document.getElementById('progress-message');
+    function actualizarProgreso(porcentaje, mensaje) {
+      const overlay = document.getElementById('progress-overlay');
+      const percentageEl = document.getElementById('progress-percentage');
+      const messageEl = document.getElementById('progress-message');
 
-    overlay.style.display = 'flex';
-    messageEl.textContent = mensaje; 
+      overlay.style.display = 'flex';
+      messageEl.textContent = mensaje;
 
-    targetPercentage = porcentaje; 
+      targetPercentage = porcentaje;
 
 
-    if (progressInterval) {
-      clearInterval(progressInterval);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+
+      if (currentPercentage < targetPercentage) {
+        progressInterval = setInterval(() => {
+          if (currentPercentage < targetPercentage) {
+            currentPercentage++;
+            percentageEl.textContent = `${Math.round(currentPercentage)}%`;
+          } else {
+            clearInterval(progressInterval);
+            progressInterval = null;
+          }
+        }, 15);
+      }
     }
-
-    if (currentPercentage < targetPercentage) {
-      progressInterval = setInterval(() => {
-        if (currentPercentage < targetPercentage) {
-          currentPercentage++; 
-          percentageEl.textContent = `${Math.round(currentPercentage)}%`;
-        } else {
-          clearInterval(progressInterval);
-          progressInterval = null;
-        }
-      }, 15);
-    }
-  }
 
     function ocultarProgreso() {
-    const overlay = document.getElementById('progress-overlay');
-    overlay.style.display = 'none';
+      const overlay = document.getElementById('progress-overlay');
+      overlay.style.display = 'none';
 
-    if (progressInterval) {
-      clearInterval(progressInterval);
-      progressInterval = null;
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
+      currentPercentage = 0;
+      targetPercentage = 0;
     }
-    currentPercentage = 0;
-    targetPercentage = 0;
-  }
 
     async function ejecutarMacal() {
-    const macalButton = document.getElementById('macalBtn');
-    const statusElement = document.getElementById('macal-status');
+      const macalButton = document.getElementById('macalBtn');
+      const statusElement = document.getElementById('macal-status');
 
-    // Deshabilitar botón y mostrar mensaje inicial
-    macalButton.disabled = true;
-    actualizarMacalStatus('Iniciando proceso Macal, por favor espera...', 'info');
-    actualizarProgreso(0, 'Iniciando extracción de Macal...');
-    try {
-      // Llamar a la nueva función del backend
-      const response = await window.pywebview.api.ejecutar_macal();
-      if (!response.success) {
-        // Si hay un error al iniciar, mostrarlo y rehabilitar el botón
-        finalizarProcesoMacal(response.message, 'error');
+      // Deshabilitar botón y mostrar mensaje inicial
+      macalButton.disabled = true;
+      actualizarMacalStatus('Iniciando proceso Macal, por favor espera...', 'info');
+      actualizarProgreso(0, 'Iniciando extracción de Macal...');
+      try {
+        // Llamar a la nueva función del backend
+        const response = await window.pywebview.api.ejecutar_macal();
+        if (!response.success) {
+          // Si hay un error al iniciar, mostrarlo y rehabilitar el botón
+          finalizarProcesoMacal(response.message, 'error');
+        }
+        // Si el inicio es exitoso, el backend notificará cuando termine
+      } catch (e) {
+        finalizarProcesoMacal('Error de comunicación con el backend.', 'error');
+        console.error(e);
       }
-      // Si el inicio es exitoso, el backend notificará cuando termine
-    } catch (e) {
-      finalizarProcesoMacal('Error de comunicación con el backend.', 'error');
-      console.error(e);
     }
-  }
 
-  function actualizarMacalStatus(msg, tipo = 'info') {
+    function actualizarMacalStatus(msg, tipo = 'info') {
       const statusElement = document.getElementById('macal-status');
       statusElement.textContent = msg;
 
@@ -294,33 +471,34 @@
       else if (tipo === 'info') clase = 'mt-3 text-center fw-bold text-primary';
 
       statusElement.className = clase;
-  }
-  
-  function finalizarProcesoMacal(msg, tipo = 'info') {
-    // Actualiza el mensaje final
-    actualizarMacalStatus(msg, tipo);
-    // Vuelve a habilitar el botón
-    document.getElementById('macalBtn').disabled = false;
-    ocultarProgreso();
-  }
-  async function abrirResultadosMacal() {
-        actualizarMacalStatus('Abriendo carpeta de resultados...', 'info');
-        try {
-            const response = await window.pywebview.api.abrir_carpeta_macal();
-            if (!response.success) {
-                actualizarMacalStatus(response.message, 'error');
-            } else {
-                // Opcional: limpiar mensaje o mostrar uno de éxito
-                setTimeout(() => actualizarMacalStatus('', 'info'), 3000); // Limpia el mensaje después de 3 seg
-            }
-        } catch (e) {
-            actualizarMacalStatus('Error al intentar abrir la carpeta.', 'error');
-            console.error(e);
-        }
     }
-  
-</script>
+
+    function finalizarProcesoMacal(msg, tipo = 'info') {
+      // Actualiza el mensaje final
+      actualizarMacalStatus(msg, tipo);
+      // Vuelve a habilitar el botón
+      document.getElementById('macalBtn').disabled = false;
+      ocultarProgreso();
+    }
+    async function abrirResultadosMacal() {
+      actualizarMacalStatus('Abriendo carpeta de resultados...', 'info');
+      try {
+        const response = await window.pywebview.api.abrir_carpeta_macal();
+        if (!response.success) {
+          actualizarMacalStatus(response.message, 'error');
+        } else {
+          // Opcional: limpiar mensaje o mostrar uno de éxito
+          setTimeout(() => actualizarMacalStatus('', 'info'), 3000); // Limpia el mensaje después de 3 seg
+        }
+      } catch (e) {
+        actualizarMacalStatus('Error al intentar abrir la carpeta.', 'error');
+        console.error(e);
+      }
+    }
+
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>

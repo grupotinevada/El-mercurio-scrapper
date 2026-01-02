@@ -2,11 +2,18 @@ import re
 import json
 from typing import List
 import preview_archivos
+import revision
 # --- Configuración de logger ---
 from logger import get_logger, log_section, dbg
 
 logger = get_logger("paso2", log_dir="logs", log_file="paso2.log")
 
+KEYWORDS_INMUEBLES = [
+    "DEPARTAMENTO", "CASA", "PARCELA", "SITIO", "TERRENO", "PATIO", 
+    "CONDOMINIO", "BODEGA", "GALPÓN", "GALPON", "LOTEO", "ESTACIONAMIENTO", 
+    "OFICINA", "INMUEBLE", "PROPIEDAD", "PREDIO", "HIJUELA", "FUNDO", 
+    "VIVIENDA", "LOCAL", "LOTE"
+]
 #ambas funciones pueden usar las mismas claves:
 CLAVES_SEPARADORES = [
     # --- Patrones Originales ---
@@ -189,6 +196,7 @@ def limpiar_encabezados(texto: str) -> str:
         r"\bECONÓMICOS\s+CLASIFICADOS\b",
         r"---\s+Página\s+\d+\s+---",
         r"^\s*\d+\s*$"
+        r"^\s*EL\s+MERCURIO\s+DE\s+VALPARA[ÍI]SO\s*$"
     ]
     for patron in patrones_eliminar:
         texto = re.sub(patron, "", texto, flags=re.IGNORECASE | re.MULTILINE)
@@ -227,8 +235,11 @@ def limpieza(texto: str) -> str:
 
     # 1. Eliminar códigos específicos
     texto = re.sub(r'\[CODE:1616\]', '', texto)
+    texto = re.sub(r'\[CODE:1612\]', '', texto)
+    texto = re.sub(r'\[CODE:', '', texto)
     texto = re.sub(r'\[CODE:', '', texto)
     texto = re.sub(r'1616\]', '', texto)
+    
     # 2. Compactar saltos de línea excesivos
     texto = re.sub(r"\n\s*\n+", "\n\n", texto)
     # 3. Unificar puntos suspensivos
@@ -292,41 +303,94 @@ def limpiar_encabezados_y_guardar(
         
     return texto_modificado
 
-def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remates_separados.json") -> None:
+# ==========================================
+# 🔍 NUEVA FUNCIÓN DE FILTRADO (Autos vs Casas)
+# ==========================================
+def filtrar_remates_inmuebles(lista_remates: List[dict]) -> tuple[List[dict], List[dict]]:
+    """
+    Recorre la lista de remates y separa los que contienen palabras clave de inmuebles
+    de los que no (posibles autos, muebles, etc.).
+    """
+    validos = []     # Casas, deptos, terrenos...
+    descartados = [] # Autos, camiones, otros...
+
+    logger.info("🕵️ Filtrando remates por tipo de bien (Inmuebles vs Otros)...")
+    
+    for item in lista_remates:
+        texto = item['remate'].upper()
+        
+        # Estrategia LISTA BLANCA:
+        # Si contiene AL MENOS UNA palabra clave de inmueble, se queda.
+        # Si no tiene ninguna, se descarta (probablemente es auto o mueble).
+        es_inmueble = False
+        for kw in KEYWORDS_INMUEBLES:
+            # Buscamos la palabra completa o parte de ella (ej: DEPARTAMENTO)
+            if kw in texto:
+                es_inmueble = True
+                break
+        
+        if es_inmueble:
+            validos.append(item)
+        else:
+            descartados.append(item)
+
+    logger.info(f"📊 Resultado Filtrado: {len(validos)} Inmuebles válidos | {len(descartados)} Descartados (No inmuebles)")
+    return validos, descartados
+
+def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remates_separados.json") -> str:
     logger.info(f"Procesando archivo de remates: {input_path}")
     
-    # Limpieza de encabezados y guardado
+    # 1. Limpieza y Texto Plano
     texto_limpio = limpiar_encabezados_y_guardar(cancel_event, input_path, output_path="remates_limpio.txt")
     if cancel_event.is_set() or texto_limpio is None:
-        logger.warning("🛑 Proceso cancelado por el usuario antes de extraer párrafos.")
         return None
     
-    # Extraer párrafos
+    # 2. Extracción de Párrafos
     parrafos = extraer_parrafos_remates(texto_limpio)
     if cancel_event.is_set():
-        logger.warning("🛑 Proceso cancelado por el usuario durante la extracción de párrafos.")
         return None
 
-    logger.info(f"Se han detectado {len(parrafos)} remates.")
+    logger.info(f"Se han detectado {len(parrafos)} bloques de texto.")
     
-    lista_remates = [{"id_remate": i, "remate": p.strip()} for i, p in enumerate(parrafos, 1)]
-    logger.info("Vista previa del JSON (primeros 2 remates):")
-    logger.info("\n" + json.dumps(lista_remates[:2], indent=4, ensure_ascii=False))
+    # 3. Creación de lista cruda
+    lista_cruda = [{"id_remate": i, "remate": p.strip()} for i, p in enumerate(parrafos, 1)]
+    
+    # 4. FILTRADO (NUEVO)
+    lista_validos, lista_descartados = filtrar_remates_inmuebles(lista_cruda)
     
     if cancel_event.is_set():
-        logger.warning("🛑 Proceso cancelado por el usuario antes de guardar JSON.")
         return None
     
-    # Guardar JSON final
+    logger.info("👀 Abriendo ventana de revisión humana...")
+    
+    # Llamamos a la ventana bloqueante
+    lista_validos_final, lista_descartados_final = revision.mostrar_revision(
+        lista_validos, 
+        lista_descartados, 
+        cancel_event
+    )
+
+    if cancel_event.is_set():
+        logger.warning("🛑 Proceso cancelado durante la revisión humana.")
+        return None
+        
+    logger.info(f"👌 Revisión completada. Final: {len(lista_validos_final)} Válidos | {len(lista_descartados_final)} Descartados.")
+    
+    # 5. Guardado de Archivos
+    # A) JSON VÁLIDO (Inmuebles) -> Este sigue al Paso 3 (IA)
     with open(archivo_final, "w", encoding="utf-8") as f:
-        json.dump(lista_remates, f, indent=4, ensure_ascii=False)
+        json.dump(lista_validos, f, indent=4, ensure_ascii=False)
     
+    # B) JSON DESCARTADO (Autos, etc) -> Se guarda por si acaso, pero no se procesa
+    archivo_descarte = archivo_final.replace(".json", "_descartados.json")
+    with open(archivo_descarte, "w", encoding="utf-8") as f:
+        json.dump(lista_descartados, f, indent=4, ensure_ascii=False)
+        logger.info(f"🗑️ Remates descartados guardados en: {archivo_descarte}")
+
+    # Preview HTML del válido
     preview_archivos.mostrar_preview_html(archivo_final, cancel_event)
-    if cancel_event.is_set():
-        logger.warning("🛑 Proceso cancelado por el usuario después de generar el archivo final.")
-        return None
     
-    logger.info(f"✅ Archivo final en formato JSON guardado en: {archivo_final}")
+    logger.info(f"✅ Archivo final (INMUEBLES) guardado en: {archivo_final}")
     return archivo_final
 
 if __name__ == "__main__":

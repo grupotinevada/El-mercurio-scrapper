@@ -3,15 +3,17 @@ import paso2_copy
 import paso3_copy
 import sys
 import os
-from valpoOCR import paso1_valpo, paso2_valpo
+from valpoOCR import paso1_valpo, paso2_valpo, paso3_valpo, paso2_5_valpo
 import uuid
 from datetime import datetime
 from logger import get_logger
 
 # --- Bloque para limpieza de archivos finales ---
+import shutil
+
 def cleanup_temp_files(logger, enable_cleanup: bool = True):
     """
-    Elimina archivos temporales generados durante el proceso.
+    Elimina archivos y carpetas temporales generados durante el proceso.
     Se puede desactivar con enable_cleanup=False (para desarrollo).
     """
     if not enable_cleanup:
@@ -23,18 +25,36 @@ def cleanup_temp_files(logger, enable_cleanup: bool = True):
         "remates_extraidos.txt",
         "remates_limpio.txt",
         "remates_separados.json",
-        "remates_valpo_temp.txt" # Agregado para Valpo
+        
+        "remates_separados_descartados.json",
+
+
+        "remates_valpo_ocr.txt",
+        "remates_valpo_temp_descartados.json"
+    ]
+    
+    carpetas_a_eliminar = [
+        "temp_cortes_valpo",
+        "temp_filtrados_valpo",
+        "temp_img_valpo",
+        "temp_tiras_valpo"
     ]
 
     for archivo in archivos_a_eliminar:
         try:
-            if os.path.exists(archivo):
+            if os.path.isfile(archivo):
                 os.remove(archivo)
-                logger.info(f"Archivo eliminado en cleanup: {archivo}")
-            else:
-                logger.debug(f"Archivo no encontrado (ya eliminado): {archivo}")
+                logger.info(f"Archivo eliminado: {archivo}")
         except Exception as e:
-            logger.warning(f"No se pudo eliminar {archivo}: {e}")
+            logger.warning(f"No se pudo eliminar archivo {archivo}: {e}")
+
+    for carpeta in carpetas_a_eliminar:
+        try:
+            if os.path.isdir(carpeta):
+                shutil.rmtree(carpeta)
+                logger.info(f"Carpeta eliminada: {carpeta}")
+        except Exception as e:
+            logger.warning(f"No se pudo eliminar carpeta {carpeta}: {e}")
 
 # --- FLUJO 1: EL MERCURIO SANTIAGO (Tu flujo actual) ---
 def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_callback, logger):
@@ -69,38 +89,73 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
 def flujo_el_mercurio_valpo(url, paginas, cancel_event, progress_callback, logger):
     """
     Lógica específica para mercuriovalpo.cl
-    Usa paso1_valpo (Navegación + Descarga) y paso2_valpo (Corte).
+    1. Descarga imágenes.
+    2. Corta columnas.
+    3. Filtra contenido basura (2.5).
+    4. Aplica OCR Google Cloud (3).
+    5. Limpia texto, Muestra Previews y Genera JSON (4 - paso2_copy).
     """
     logger.info("🟢 Iniciando flujo específico: El Mercurio de Valparaíso")
     
-    # --- PASO 1: Extracción con Selenium (Navegación + Descarga) ---
-    logger.info("=" * 20 + " INICIANDO PASO 1: DESCARGA IMÁGENES " + "=" * 20)
+    # --- PASO 1: Extracción Web ---
+    logger.info("=" * 20 + " PASO 1: DESCARGA IMÁGENES " + "=" * 20)
     progress_callback(5, 'Etapa 1: Descargando páginas (Valpo)...')
+    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas)
     
-    lista_imagenes = []
-    ruta_txt_debug = None
-
-    try:
-        # AHORA RECIBIMOS DOS VALORES: La lista (memoria) y el archivo (debug)
-        lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas)
-    except Exception as e:
-        logger.error(f"Error crítico en Paso 1 Valpo: {e}")
-        raise e
-
     if not lista_imagenes:
         raise Exception("El extractor de Valparaíso no obtuvo imágenes.")
-        
-    logger.info(f"✅ PASO 1 completado. Imágenes en memoria: {len(lista_imagenes)}")
 
-    # --- PASO 2: Procesamiento de Imágenes (Conexión por Memoria) ---
-    logger.info("=" * 20 + " INICIANDO PASO 2: PROCESAMIENTO IMAGEN " + "=" * 20)
-    progress_callback(30, 'Etapa 2: Procesando imágenes (Valpo)...')
+    # --- PASO 2: Procesamiento (Corte de Columnas) ---
+    logger.info("=" * 20 + " PASO 2: SEPARACIÓN DE COLUMNAS " + "=" * 20)
+    progress_callback(20, 'Etapa 2: Separando columnas (Valpo)...')
     
-    # ✅ PASAMOS LA LISTA DIRECTAMENTE
-    ruta_json_separado = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes)
+    # Recibe diccionario BRUTO (todas las columnas)
+    diccionario_cols = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes)
     
-    # Retornamos ruta_txt_debug solo para que el cleanup lo borre al final si es necesario
-    return ruta_json_separado, ruta_txt_debug
+    if not diccionario_cols:
+         raise Exception("El Paso 2 no generó columnas válidas.")
+
+    # --- PASO 2.5: Filtrado Inteligente (1612) ---
+    logger.info("=" * 20 + " PASO 2.5: FILTRADO INTELIGENTE " + "=" * 20)
+    progress_callback(30, 'Etapa 2.5: Filtrando sección Remates...')
+    
+    # Filtramos las columnas que no sirven
+    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols)
+    
+    if not diccionario_cols_limpio:
+        logger.warning("⚠️ El filtro 2.5 eliminó todas las columnas (¿No se encontró '1612'?).")
+        # Nota: Si el filtro es muy estricto, podrías comentar esto para depurar.
+
+    # --- PASO 3: Unificación + OCR (Nube) ---
+    logger.info("=" * 20 + " PASO 3: UNIFICACIÓN Y OCR " + "=" * 20)
+    progress_callback(50, 'Etapa 3: OCR en la nube (Valpo)...')
+    
+    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio)
+    
+    logger.info(f"✅ Se generó el archivo OCR bruto: {ruta_txt_ocr}")
+
+    # --- PASO 4: Limpieza, Revisión Humana y JSON ---
+    logger.info("=" * 20 + " PASO 4: LIMPIEZA Y ESTRUCTURACIÓN " + "=" * 20)
+    progress_callback(75, 'Etapa 4: Limpiando texto y revisión humana...')
+
+    # Reutilizamos la lógica de Santiago (paso2_copy) que ahora incluye:
+    # 1. Limpieza de texto (Preview editable)
+    # 2. Separación de remates
+    # 3. Clasificación (Inmuebles vs Autos)
+    # 4. Revisión Humana (Ventana de aprobación)
+    ruta_json_final = paso2_copy.procesar_remates(
+        cancel_event, 
+        ruta_txt_ocr, 
+        archivo_final="remates_valpo_temp.json"
+    )
+
+    if not ruta_json_final:
+        logger.warning("⚠️ El usuario canceló o no se generó el JSON final.")
+        return None, None
+
+    logger.info(f"✅ JSON Estructurado y Aprobado: {ruta_json_final}")
+    
+    return ruta_json_final, ruta_txt_debug
 
 
 # --- ORQUESTADOR PRINCIPAL (Dispatcher) ---
@@ -121,11 +176,19 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
                 url, paginas, columnas, cancel_event, progress_callback, logger
             )
             
-        elif "mercuriovalpo.cl" in url or "mercurioantofagasta.cl" in url:
+        elif "mercuriovalpo.cl" in url:
             # ---> Flujo Valparaíso
+            # ruta_json_separado AQUÍ recibe la ruta del JSON final generado en paso2_copy
             ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_valpo(
                 url, paginas, cancel_event, progress_callback, logger
             )
+            
+            # Si el usuario canceló en la revisión humana o algo falló
+            if not ruta_json_separado:
+                logger.info("⏹️ Proceso detenido en flujo Valparaíso (sin JSON final).")
+                return 
+
+            # NOTA: Aquí quitamos el 'return' para que el flujo continúe hacia el Paso 3 (IA)
             
         else:
             logger.error(f"URL no reconocida: {url}")
@@ -136,18 +199,21 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             logger.warning("Proceso cancelado por el usuario antes del paso 3.")
             return
 
-        # Si el flujo devuelve None (como en el caso actual de Valpo), avisamos y salimos sin error crítico
-        if not ruta_json_separado:
-            logger.warning("⏹️ El flujo finalizó temprano (posiblemente falta implementación de pasos siguientes).")
-            progress_callback(100, 'Proceso finalizado (etapas posteriores pendientes).')
-            return
+        if not ruta_json_separado or not os.path.exists(ruta_json_separado):
+            logger.error("No se generó el archivo JSON intermedio. Abortando.")
+            raise Exception("Fallo en la generación del JSON intermedio.")
 
         # 3. PASO 3: IA (ESTO ES REUTILIZABLE PARA AMBOS)
         # La IA recibe el JSON limpio, sin importar de qué diario vino.
         logger.info("=" * 20 + " INICIANDO PASO 3: EXTRACCIÓN CON IA (COMÚN) " + "=" * 20)
         progress_callback(66.6, 'Etapa 3: Analizando con IA...')
         
-        ruta_json_final, ruta_excel_final = paso3_copy.run_processor(cancel_event, ruta_json_separado, progress_callback)
+        # paso3_copy es el procesador de IA
+        ruta_json_final, ruta_excel_final = paso3_copy.run_processor(
+            cancel_event, 
+            ruta_json_separado, 
+            progress_callback
+        )
         
         if cancel_event.is_set():
             logger.warning("Proceso cancelado por el usuario durante el paso 3.")
@@ -167,14 +233,19 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             nuevo_json = os.path.join("outputs", f"{base_name}.json")
             nuevo_excel = os.path.join("outputs", f"{base_name}.xlsx")
 
-            os.rename(ruta_json_final, nuevo_json)
-            os.rename(ruta_excel_final, nuevo_excel)
+            # Mover y renombrar archivos finales
+            if os.path.exists(ruta_json_final):
+                os.rename(ruta_json_final, nuevo_json)
+            if os.path.exists(ruta_excel_final):
+                os.rename(ruta_excel_final, nuevo_excel)
 
             # Eliminar temporales (si aplica)
             for tmp_file in [ruta_txt_bruto, ruta_json_separado]:
                 if tmp_file:
                     try:
                         if os.path.exists(tmp_file):
+                            # Para Valpo no borramos el TXT del OCR si quisieras guardarlo como debug,
+                            # pero normalmente ya no es necesario. Lo borramos para limpieza.
                             os.remove(tmp_file)
                             logger.info(f"Archivo temporal eliminado: {tmp_file}")
                     except Exception as e:
@@ -182,6 +253,13 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
 
             logger.info(f"PASO 3 completado.")
             logger.info(f"Archivos finales guardados en 'outputs':\n  - {nuevo_json}\n  - {nuevo_excel}")
+            
+            # Intentar abrir el Excel automáticamente al finalizar
+            try:
+                os.startfile(nuevo_excel)
+            except:
+                pass
+
             logger.info("🎉 ¡PROCESO FINALIZADO CON ÉXITO! 🎉")
         else:
             logger.error("PASO 3 FALLÓ - No se generaron archivos finales")
@@ -194,7 +272,6 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
     finally:
         cleanup_temp_files(logger, enable_cleanup)
         logger.info("===== FIN DEL PROCESO =====\n")
-
 # --- Bloque para mantener funcionalidad CLI ---
 if __name__ == "__main__":
     # Dummy cancel event para pruebas CLI
