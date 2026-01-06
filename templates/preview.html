@@ -17,24 +17,40 @@
       --fluent-radius: 8px;
     }
 
+    /* FIX 1: Estructura base fija */
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      /* Evita que la ventana completa tenga scroll */
+    }
+
     body {
       background-color: var(--fluent-bg);
       font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
       color: var(--fluent-text);
       padding: 20px;
-      height: 100vh;
-      overflow: hidden;
+      display: flex;
+      /* Flexbox directo al body */
+      flex-direction: column;
     }
 
+    /* Contenedor principal */
     .fluent-container {
       background-color: var(--fluent-surface);
       border: 1px solid var(--fluent-border);
       border-radius: var(--fluent-radius);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      height: 100%;
+
+      /* Ocupa todo el espacio disponible menos el padding del body */
+      flex: 1;
       display: flex;
       flex-direction: column;
       padding: 20px;
+
+      /* Importante para contener hijos */
+      overflow: hidden;
     }
 
     .editor-header {
@@ -45,18 +61,22 @@
       padding-bottom: 10px;
       border-bottom: 1px solid var(--fluent-border);
       flex-shrink: 0;
+      /* No se encoge */
     }
 
     /* --- EDITOR CONTENTEDITABLE --- */
     .editor-container {
+      /* FIX 1: min-height: 0 es CRUCIAL en flexbox anidados para que el scroll funcione */
+      min-height: 0;
       flex-grow: 1;
       position: relative;
       border: 1px solid var(--fluent-border);
       border-radius: 4px;
       background-color: #fafafa;
-      overflow: hidden;
       display: flex;
       flex-direction: column;
+      margin-bottom: 1rem;
+      /* Reemplaza la clase mb-3 para control total */
     }
 
     #editor {
@@ -65,25 +85,54 @@
       margin: 0;
       border: none;
       outline: none;
-
-      /* Tipografía de Editor */
       font-family: 'Consolas', 'Monaco', monospace;
       font-size: 13px;
       line-height: 1.5;
       white-space: pre-wrap;
-      /* Respeta saltos de linea */
       word-wrap: break-word;
-      /* Evita scroll horizontal infinito */
       overflow-y: auto;
-      /* Scroll nativo */
+      /* Scroll vertical */
       color: #333;
+
+      /* FIX 2: Evita el "salto" visual y hace el scroll más usable */
+      scrollbar-gutter: stable;
+      /* Reserva el espacio del scroll siempre */
+    }
+
+    /* FIX 2: Estilizar la barra de desplazamiento (más ancha y visible) */
+    #editor::-webkit-scrollbar {
+      width: 14px;
+      /* Más ancha para evitar falsos clicks */
+    }
+
+    #editor::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-left: 1px solid #ddd;
+    }
+
+    #editor::-webkit-scrollbar-thumb {
+      background-color: #c1c1c1;
+      border-radius: 0;
+      /* Cuadrado o con radio leve */
+      border: 3px solid #f1f1f1;
+      /* Crea un efecto de "padding" interno */
+    }
+
+    #editor::-webkit-scrollbar-thumb:hover {
+      background-color: #a8a8a8;
     }
 
     /* ESTILO PARA LAS MAYÚSCULAS */
     .h-upper {
       color: #dc3545;
-      /* Rojo Bootstrap */
       font-weight: 700;
+    }
+
+    /* Footer de botones */
+    .footer-actions {
+      flex-shrink: 0;
+      /* Evita que los botones se aplasten */
+      padding-top: 10px;
     }
 
     /* Botones */
@@ -114,58 +163,54 @@
 
 <body>
 
-  <div class="container h-100">
-    <div class="fluent-container">
+  <div class="fluent-container">
 
-      <div class="editor-header">
-        <div id="file-title">
-          <span class="spinner-border spinner-border-sm text-primary" role="status"></span> Cargando...
-        </div>
-
-        <div class="d-flex align-items-center gap-3">
-          <small class="text-muted" style="font-size: 0.85em;">
-            <i class="bi bi-info-circle me-1"></i> Puedes editar el texto directamente
-          </small>
-          <div class="form-check form-switch m-0">
-            <input class="form-check-input" type="checkbox" id="toggleHighlight" checked onchange="toggleMode()">
-            <label class="form-check-label small text-secondary" for="toggleHighlight">Resaltar Mayúsculas</label>
-          </div>
-        </div>
+    <div class="editor-header">
+      <div id="file-title">
+        <span class="spinner-border spinner-border-sm text-primary" role="status"></span> Cargando...
       </div>
 
-      <div class="mb-3 editor-container">
-        <div id="editor" contenteditable="true" spellcheck="false"></div>
-      </div>
-
-      <div class="d-flex justify-content-between align-items-center pt-2 flex-shrink-0">
-        <button class="btn btn-danger" onclick="pywebview.api.cancelar_proceso_entero()">
-          <i class="bi bi-x-circle me-1"></i> Cancelar
-        </button>
-        <div class="d-flex gap-2">
-          <button class="btn btn-secondary" onclick="pywebview.api.cerrar_sin_guardar()">
-            Descartar
-          </button>
-          <button class="btn btn-success" id="saveBtn" onclick="guardar()">
-            <i class="bi bi-save me-1"></i> Guardar y Continuar
-          </button>
+      <div class="d-flex align-items-center gap-3">
+        <small class="text-muted" style="font-size: 0.85em;">
+          <i class="bi bi-info-circle me-1"></i> Puedes editar el texto directamente
+        </small>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="toggleHighlight" checked onchange="toggleMode()">
+          <label class="form-check-label small text-secondary" for="toggleHighlight">Resaltar Mayúsculas</label>
         </div>
       </div>
-
     </div>
+
+    <div class="editor-container">
+      <div id="editor" contenteditable="true" spellcheck="false"></div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center footer-actions">
+      <button class="btn btn-danger" onclick="pywebview.api.cancelar_proceso_entero()">
+        <i class="bi bi-x-circle me-1"></i> Cancelar
+      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary" onclick="pywebview.api.cerrar_sin_guardar()">
+          Descartar
+        </button>
+        <button class="btn btn-success" id="saveBtn" onclick="guardar()">
+          <i class="bi bi-save me-1"></i> Guardar y Continuar
+        </button>
+      </div>
+    </div>
+
   </div>
 
   <script>
     const editor = document.getElementById('editor');
     const toggle = document.getElementById('toggleHighlight');
 
-    // Variable global para guardar el texto puro temporalmente
     let rawTextContent = "";
 
     function isJSON(text) {
       try { JSON.parse(text); return true; } catch (e) { return false; }
     }
 
-    // Escapar HTML para evitar inyección al renderizar
     function escapeHtml(text) {
       return text
         .replace(/&/g, "&amp;")
@@ -173,39 +218,30 @@
         .replace(/>/g, "&gt;");
     }
 
-    // Función principal de renderizado
     function renderText(text, applyHighlight) {
-      // Si no hay resaltado, solo mostramos el texto plano seguro
       if (!applyHighlight) {
         editor.innerText = text;
         return;
       }
 
       let formatted = escapeHtml(text);
-
-      // Regex: Frases de 2+ palabras en mayúsculas (letras, espacios, puntos, guiones)
-      // Ejemplo: "REMATE JUDICIAL" se pinta, "A" no se pinta.
+      // Regex ajustada para evitar falsos positivos
       const regex = /\b([A-ZÁÉÍÓÚÑ]{2,}(?:[\s,.-]+[A-ZÁÉÍÓÚÑ0-9]{1,})*)\b/g;
 
       formatted = formatted.replace(regex, function (match) {
-        // Filtro extra: al menos 3 caracteres para evitar ruido
         if (match.trim().length < 3) return match;
         return `<span class="h-upper">${match}</span>`;
       });
 
-      // Convertir saltos de línea en <br> para HTML
       formatted = formatted.replace(/\n/g, '<br>');
-
       editor.innerHTML = formatted;
     }
 
     function toggleMode() {
-      // Al cambiar el switch, tomamos el texto actual (sin etiquetas) y lo re-renderizamos
       const currentText = editor.innerText;
       renderText(currentText, toggle.checked);
     }
 
-    // Cargar datos iniciales
     window.addEventListener('pywebviewready', function () {
       pywebview.api.get_initial_data().then(data => {
         const fileName = data.filePath.split(/[\\/]/).pop();
@@ -223,16 +259,11 @@
           toggle.checked = false;
         }
 
-        // Guardamos el contenido inicial
         rawTextContent = content;
-
-        // Renderizamos
         renderText(content, shouldHighlight);
       });
     });
 
-    // --- MANEJO DE PEGADO (IMPORTANTE) ---
-    // Evita que al pegar texto desde Word/Web se peguen estilos raros
     editor.addEventListener("paste", function (e) {
       e.preventDefault();
       const text = (e.originalEvent || e).clipboardData.getData('text/plain');
@@ -243,10 +274,7 @@
       const btn = document.getElementById('saveBtn');
       btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
       btn.disabled = true;
-
-      // innerText obtiene el texto limpio (sin los spans de colores) respetando saltos de línea
       const contentToSave = editor.innerText;
-
       setTimeout(() => {
         pywebview.api.guardar_y_cerrar(contentToSave);
       }, 200);

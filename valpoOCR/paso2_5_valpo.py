@@ -57,7 +57,7 @@ def es_titulo_real(linea, codigo):
 
     # 4. PALABRAS CLAVE DE TÍTULO (Refuerzo Positivo)
     # Si contiene estas palabras, es casi seguro un título
-    palabras_titulo = ["CITAN", "REUNION", "INSTITUCIONES", "PROPIEDADES", "VEHICULOS", "VARIOS", "JUDICIALES", "DEPORTES", "EMPLEOS"]
+    palabras_titulo = ["CITAN", "REUNION", "INSTITUCIONES", "PROPIEDADES", "VEHICULOS", "VARIOS", "JUDICIALES", "DEPORTES", "EMPLEOS","CITANAREUNION"]
     linea_upper = linea.upper()
     if any(w in linea_upper for w in palabras_titulo):
         return True
@@ -90,9 +90,9 @@ def es_titulo_real(linea, codigo):
 
     return True
 
-def ejecutar_filtrado(diccionario_paginas):
+def ejecutar_filtrado(diccionario_paginas, region):
     logger = get_logger("paso2_5_valpo", log_dir="logs", log_file="paso2_5_valpo.log")
-    logger.info("🕵️ Iniciando Paso 2.5: Filtrado Inteligente (Regla Estricta 16XX)")
+    logger.info(f"🕵️ Iniciando Paso 2.5: Filtrado Inteligente (Regla Estricta {region.upper()})")
     
     reiniciar_estado()
     

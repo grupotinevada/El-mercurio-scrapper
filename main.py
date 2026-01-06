@@ -86,75 +86,65 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
     return ruta_json_separado, ruta_txt_bruto
 
 # --- FLUJO 2: EL MERCURIO VALPARAÍSO (Nuevo flujo) ---
-def flujo_el_mercurio_valpo(url, paginas, cancel_event, progress_callback, logger):
+def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, logger, region):
     """
-    Lógica específica para mercuriovalpo.cl
-    1. Descarga imágenes.
-    2. Corta columnas.
-    3. Filtra contenido basura (2.5).
-    4. Aplica OCR Google Cloud (3).
-    5. Limpia texto, Muestra Previews y Genera JSON (4 - paso2_copy).
+    Lógica compartida para diarios regionales (Valparaíso y Antofagasta).
+    Recibe el parámetro 'region' para diferenciar configuraciones.
     """
-    logger.info("🟢 Iniciando flujo específico: El Mercurio de Valparaíso")
+    logger.info(f"🟢 Iniciando flujo regional: El Mercurio de {region.capitalize()}")
     
     # --- PASO 1: Extracción Web ---
-    logger.info("=" * 20 + " PASO 1: DESCARGA IMÁGENES " + "=" * 20)
-    progress_callback(5, 'Etapa 1: Descargando páginas (Valpo)...')
-    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas)
+    logger.info("=" * 20 + f" PASO 1: DESCARGA IMÁGENES ({region.upper()}) " + "=" * 20)
+    progress_callback(5, f'Etapa 1: Descargando páginas ({region})...')
+    
+    # Pasamos la región por si en el futuro cambia la forma de logueo o selectores
+    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas, region)
     
     if not lista_imagenes:
-        raise Exception("El extractor de Valparaíso no obtuvo imágenes.")
+        raise Exception(f"El extractor de {region} no obtuvo imágenes.")
 
     # --- PASO 2: Procesamiento (Corte de Columnas) ---
     logger.info("=" * 20 + " PASO 2: SEPARACIÓN DE COLUMNAS " + "=" * 20)
-    progress_callback(20, 'Etapa 2: Separando columnas (Valpo)...')
+    progress_callback(20, f'Etapa 2: Separando columnas ({region})...')
     
-    # Recibe diccionario BRUTO (todas las columnas)
-    diccionario_cols = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes)
+    # El corte visual suele ser igual, pero pasamos la región por consistencia/logs
+    diccionario_cols = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes, region)
     
     if not diccionario_cols:
          raise Exception("El Paso 2 no generó columnas válidas.")
 
-    # --- PASO 2.5: Filtrado Inteligente (1612) ---
+    # --- PASO 2.5: Filtrado Inteligente (Códigos Específicos) ---
     logger.info("=" * 20 + " PASO 2.5: FILTRADO INTELIGENTE " + "=" * 20)
     progress_callback(30, 'Etapa 2.5: Filtrando sección Remates...')
     
-    # Filtramos las columnas que no sirven
-    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols)
+    # AQUI ES CLAVE: Pasamos la región para saber qué código buscar (1612 vs otros)
+    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols, region)
     
     if not diccionario_cols_limpio:
-        logger.warning("⚠️ El filtro 2.5 eliminó todas las columnas (¿No se encontró '1612'?).")
-        # Nota: Si el filtro es muy estricto, podrías comentar esto para depurar.
+        logger.warning(f"⚠️ El filtro 2.5 eliminó todas las columnas (No se encontraron códigos de {region}).")
 
     # --- PASO 3: Unificación + OCR (Nube) ---
     logger.info("=" * 20 + " PASO 3: UNIFICACIÓN Y OCR " + "=" * 20)
-    progress_callback(50, 'Etapa 3: OCR en la nube (Valpo)...')
+    progress_callback(50, 'Etapa 3: OCR en la nube...')
     
     ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio)
     
     logger.info(f"✅ Se generó el archivo OCR bruto: {ruta_txt_ocr}")
 
-    # --- PASO 4: Limpieza, Revisión Humana y JSON ---
+    # --- PASO 4: Limpieza y JSON ---
     logger.info("=" * 20 + " PASO 4: LIMPIEZA Y ESTRUCTURACIÓN " + "=" * 20)
     progress_callback(75, 'Etapa 4: Limpiando texto y revisión humana...')
 
-    # Reutilizamos la lógica de Santiago (paso2_copy) que ahora incluye:
-    # 1. Limpieza de texto (Preview editable)
-    # 2. Separación de remates
-    # 3. Clasificación (Inmuebles vs Autos)
-    # 4. Revisión Humana (Ventana de aprobación)
     ruta_json_final = paso2_copy.procesar_remates(
         cancel_event, 
         ruta_txt_ocr, 
-        archivo_final="remates_valpo_temp.json"
+        archivo_final=f"remates_{region}_temp.json" # Nombre temporal dinámico
     )
 
     if not ruta_json_final:
         logger.warning("⚠️ El usuario canceló o no se generó el JSON final.")
         return None, None
 
-    logger.info(f"✅ JSON Estructurado y Aprobado: {ruta_json_final}")
-    
     return ruta_json_final, ruta_txt_debug
 
 
@@ -176,19 +166,19 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
                 url, paginas, columnas, cancel_event, progress_callback, logger
             )
             
-        elif "mercuriovalpo.cl" in url:
-            # ---> Flujo Valparaíso
-            # ruta_json_separado AQUÍ recibe la ruta del JSON final generado en paso2_copy
-            ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_valpo(
-                url, paginas, cancel_event, progress_callback, logger
+        elif "mercuriovalpo.cl" in url or "mercurioantofagasta.cl" in url:
+            # ---> Flujo Regional (Valpo / Antofa)
+            
+            # Determinamos la región
+            region = "valparaiso" if "mercuriovalpo.cl" in url else "antofagasta"
+            
+            ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_regional(
+                url, paginas, cancel_event, progress_callback, logger, region
             )
             
-            # Si el usuario canceló en la revisión humana o algo falló
             if not ruta_json_separado:
-                logger.info("⏹️ Proceso detenido en flujo Valparaíso (sin JSON final).")
-                return 
-
-            # NOTA: Aquí quitamos el 'return' para que el flujo continúe hacia el Paso 3 (IA)
+                logger.info(f"⏹️ Proceso detenido en flujo {region}.")
+                return
             
         else:
             logger.error(f"URL no reconocida: {url}")
@@ -225,7 +215,7 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             os.makedirs("outputs", exist_ok=True)
 
             # Prefijo para diferenciar en el nombre del archivo
-            prefix = "VALPO" if "mercuriovalpo" in url else "SANTIAGO"
+            prefix = region.upper()
             fecha_str = datetime.now().strftime("%d-%m-%Y")
             uuid_str = uuid.uuid4().hex[:6]
             base_name = f"remates_{prefix}_{fecha_str}-{uuid_str}"

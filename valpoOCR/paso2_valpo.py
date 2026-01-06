@@ -27,12 +27,12 @@ else:
 custom_config = r'--oem 3 --psm 6 -l spa'
 
 
-def procesar_remates_valpo(cancel_event, entrada_datos):
+def procesar_remates_valpo(cancel_event, entrada_datos, region):
     """
     Función principal llamada por main.py.
     """
     logger = get_logger("paso2_valpo", log_dir="logs", log_file="paso2_valpo.log")
-    logger.info("✂️ Iniciando Paso 2 (Valparaíso) - SEPARACIÓN DE COLUMNAS")
+    logger.info(f"✂️ Iniciando Paso 2 ({region.upper()}) - SEPARACIÓN DE COLUMNAS")
 
     imagenes = []
     if isinstance(entrada_datos, list):

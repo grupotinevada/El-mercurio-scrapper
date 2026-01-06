@@ -17,9 +17,9 @@ from logger import get_logger, log_section, dbg
 
 
 # --- CONTROLADOR PRINCIPAL ---
-def run_extractor_ocr(url: str, paginas: int):
+def run_extractor_ocr(url: str, paginas: int, region: str):
     logger = get_logger("paso1_valpo", log_dir="logs", log_file="paso1_valpo.log")
-    logger.info("🌊 Iniciando Extractor Valparaíso (Modo OCR)...")
+    logger.info(f"🌊 Iniciando Extractor {region.upper()} (Modo OCR)...")
 
     load_dotenv()
     USUARIO = os.getenv("USUARIO")
