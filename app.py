@@ -1,232 +1,288 @@
-import webview
-import threading
+import sys
 import os
 import platform
 import subprocess
-import main  # Asegúrate de que main.py exista con la función orquestador_con_datos
+import threading
+import ctypes
+import webview
+import shutil
+# Módulos propios
+import main  # El Mercurio
 import macal
-from logger import get_logger, log_section, dbg
+from logger import get_logger
+from housePrincing import main_hp
 
+# --- Configuración Inicial ---
 logger = get_logger("app", log_dir="logs", log_file="app.log")
 
-cancel_event = threading.Event()
-enable_cleanup = True
-window = None
+# --- Utilidades del Sistema ---
+def ocultar_consola_windows():
+    """Oculta la ventana de consola si se ejecuta en Windows."""
+    if sys.platform == "win32":
+        hWnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hWnd:
+            SW_MINIMIZE = 6
+            ctypes.windll.user32.ShowWindow(hWnd, SW_MINIMIZE)
 
-import sys
-import ctypes
+def abrir_ruta_sistema(ruta):
+    """Abre una carpeta o archivo en el explorador del sistema operativo correspondiente."""
+    try:
+        if not os.path.exists(ruta):
+            return False, f"La ruta '{ruta}' no existe."
 
-if sys.platform == "win32":
-    # Obtiene el handle de la ventana de la consola
-    hWnd = ctypes.windll.kernel32.GetConsoleWindow()
-    if hWnd:
-        SW_MINIMIZE = 6
-        ctypes.windll.user32.ShowWindow(hWnd, SW_MINIMIZE)
+        ruta_abs = os.path.abspath(ruta)
+        sistema = platform.system()
+        
+        logger.info(f"Abriendo ruta en {sistema}: {ruta_abs}")
 
+        if sistema == 'Windows':
+            os.startfile(ruta_abs)
+        elif sistema == 'Darwin': # macOS
+            subprocess.Popen(['open', ruta_abs])
+        elif sistema == 'Linux':
+            subprocess.Popen(['xdg-open', ruta_abs])
+        else:
+            return False, f"Sistema operativo no soportado: {sistema}"
+        
+        return True, f"Carpeta abierta con éxito."
+    except Exception as e:
+        logger.error(f"Error al abrir ruta: {e}")
+        return False, f"Error del sistema: {e}"
+
+# --- Clase API ---
 class Api:
+    """
+    Puente de comunicación entre el Frontend (JS) y el Backend (Python).
+    """
+    def __init__(self):
+        self._window = None
+        self.cancel_event = threading.Event()
+        self.enable_cleanup = True
+        
+        # Rutas constantes
+        self.DIR_OUTPUTS = "outputs"
+        self.DIR_MACAL = "propiedades_macal"
+        self.DIR_HP_OUTPUT = "reporte_final_housepricing.json"
+        self.DIR_HP_INPUT = "./input_pdfs"
 
-    """
-    Clase que expone la funcionalidad del backend (Python) al frontend (JavaScript).
-    """
+    def set_window(self, window):
+        """Asigna la instancia de la ventana de pywebview a la API."""
+        self._window = window
+
+    # --- Métodos Auxiliares de UI ---
+    def _enviar_js(self, script):
+        """Ejecuta JS en la ventana de forma segura."""
+        if self._window:
+            self._window.evaluate_js(script)
+
+    def _actualizar_progreso_ui(self, porcentaje, mensaje):
+        """Callback estandarizado para actualizar barras de progreso."""
+        mensaje_escapado = mensaje.replace("'", "\\'")
+        self._enviar_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
+
+    # --- Funcionalidades Expuestas ---
+
     def abrir_carpeta(self, ruta_carpeta="outputs"):
+        """Abre la carpeta general de resultados."""
+        # Asegurar creación de directorios base
+        os.makedirs(self.DIR_OUTPUTS, exist_ok=True)
+        os.makedirs(self.DIR_MACAL, exist_ok=True)
+
         print(f"Intentando abrir la carpeta: {ruta_carpeta}")
         
+        # Si la ruta no existe, la creamos (comportamiento original)
+        if not os.path.exists(ruta_carpeta):
+            os.makedirs(ruta_carpeta)
+            logger.info(f"Carpeta '{ruta_carpeta}' creada.")
 
-        """
-        Abre una carpeta en el explorador de archivos del sistema operativo.
-        Por defecto, intenta abrir la carpeta 'resultados'.
-        """
-        try:
-            if not os.path.exists(ruta_carpeta):
-                print(f"La carpeta '{ruta_carpeta}' no existe. Creándola...")
-                os.makedirs(ruta_carpeta)
-                logger.info(f"Carpeta '{ruta_carpeta}' creada.")
-                
-            ruta_macal = "propiedades_macal"
-            if not os.path.exists(ruta_macal):
-                os.makedirs(ruta_macal)
-                
-            sistema = platform.system()
-            print("aaaaaaaaaaaa")
-            
-            if sistema == 'Windows':
-                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
-                os.startfile(os.path.abspath(ruta_carpeta))
-            elif sistema == 'Darwin':
-                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
-                subprocess.Popen(['open', os.path.abspath(ruta_carpeta)])
-            elif sistema == 'Linux':
-                print(f"Abriendo carpeta: {os.path.abspath(ruta_carpeta)}")
-                subprocess.Popen(['xdg-open', os.path.abspath(ruta_carpeta)])
-            else:
-                return {'success': False, 'message': f'Error: Sistema operativo no soportado para esta función: {sistema}'}
-            
-            return {'success': True, 'message': f'Carpeta "{ruta_carpeta}" abierta con éxito.'}
+        exito, mensaje = abrir_ruta_sistema(ruta_carpeta)
+        return {'success': exito, 'message': mensaje}
 
-        except Exception as e:
-            logger.info(f"Error al intentar abrir la carpeta: {e}")
-            return {'success': False, 'message': f'Ocurrió un error al abrir la carpeta: {e}'}
-        
     def abrir_carpeta_macal(self):
-        """
-        Abre la carpeta de resultados específica para el extractor de Macal.
-        """
-        ruta_macal = "propiedades_macal"
-        logger.info(f"Intentando abrir la carpeta de Macal: {ruta_macal}")
-        try:
-            # Asegura que la carpeta exista antes de intentar abrirla
-            os.makedirs(ruta_macal, exist_ok=True)
-            sistema = platform.system()
-            if sistema == 'Windows':
-                os.startfile(os.path.abspath(ruta_macal))
-            elif sistema == 'Darwin':
-                subprocess.Popen(['open', os.path.abspath(ruta_macal)])
-            elif sistema == 'Linux':
-                subprocess.Popen(['xdg-open', os.path.abspath(ruta_macal)])
-            else:
-                return {'success': False, 'message': f'Sistema operativo no soportado: {sistema}'}
-            return {'success': True, 'message': f'Carpeta "{ruta_macal}" abierta.'}
-        except Exception as e:
-            logger.error(f"Error al abrir la carpeta de Macal: {e}")
-            return {'success': False, 'message': f'Ocurrió un error al abrir la carpeta: {e}'}
+        """Abre la carpeta específica de Macal."""
+        os.makedirs(self.DIR_MACAL, exist_ok=True)
+        exito, mensaje = abrir_ruta_sistema(self.DIR_MACAL)
+        return {'success': exito, 'message': mensaje}
 
+    # NUEVO: Método para abrir carpeta HP
+    def abrir_carpeta_hp(self):
+        os.makedirs(self.DIR_HP, exist_ok=True)
+        exito, mensaje = abrir_ruta_sistema(self.DIR_HP)
+        return {'success': exito, 'message': mensaje}
+
+    def cancelar_proceso(self):
+        """Señaliza la cancelación del proceso actual."""
+        if self.cancel_event.is_set():
+            return {'success': False, 'message': 'No hay un proceso en ejecución para cancelar.'}
+        
+        self.cancel_event.set()
+        self._enviar_js("actualizarMensajeUI('⛔ El proceso fue cancelado por el usuario.', 'warning')")
+        return {'success': True, 'message': '⛔ Proceso cancelado.'}
+
+    # --- Lógica de Negocio: El Mercurio ---
 
     def procesar_formulario(self, data):
-        global cancel_event
-        cancel_event.clear()  # Reinicia el evento por si se ejecutó antes
-
-        print("Datos recibidos desde la UI:", data)
+        """Valida datos e inicia el scraper de El Mercurio."""
+        self.cancel_event.clear()
+        print("Datos recibidos:", data)
 
         try:
-            # Extraer y validar los datos
             url = data.get("url", "").strip()
-            paginas_str = data.get("paginas", "0")
-            columnas_str = data.get("columnas", "7").strip()  # Valor por defecto 8
+            paginas = int(data.get("paginas", "0"))
+            columnas = int(data.get("columnas", "7").strip())
 
             if not url:
-                return {'success': False, 'message': 'Error: La URL no puede estar vacía.'}
+                return {'success': False, 'message': 'Error: La URL es obligatoria.'}
 
-            num_paginas = int(paginas_str)
-            num_columnas = int(columnas_str)
-
-            # Lanzar el hilo para procesar sin bloquear la UI
             thread = threading.Thread(
                 target=self._run_proceso_mercurio,
-                args=(url, num_paginas, num_columnas),
+                args=(url, paginas, columnas),
                 daemon=True
             )
             thread.start()
-
-            # Mensaje inicial
-            return {'success': True, 'message': '¡Proceso iniciado correctamente! Revisa la consola para ver el progreso.'}
+            return {'success': True, 'message': 'Proceso iniciado correctamente.'}
 
         except ValueError:
-            return {'success': False, 'message': 'Error: El número de páginas debe ser un valor numérico válido.'}
+            return {'success': False, 'message': 'Error: Páginas y columnas deben ser números.'}
         except Exception as e:
-            print(f"Ocurrió un error inesperado: {e}")
-            return {'success': False, 'message': f'Ocurrió un error inesperado: {e}'}
+            return {'success': False, 'message': f'Error inesperado: {e}'}
+
+    def _run_proceso_mercurio(self, url, paginas, columnas):
+        try:
+            resultado = main.orquestador_con_datos(
+                url, paginas, columnas, 
+                self.cancel_event, 
+                self.enable_cleanup, 
+                self._actualizar_progreso_ui
+            )
+
+            if self.cancel_event.is_set():
+                self._enviar_js("actualizarMensajeUI('⛔ Proceso cancelado por el usuario.', 'warning')")
+            else:
+                self._enviar_js("actualizarMensajeUI('✅ Proceso completado con éxito!', 'success')")
+
+        except Exception as e:
+            msg = f"Error inesperado: {e}"
+            self._enviar_js(f"actualizarMensajeUI('{msg}', 'error')")
         
-        
+        finally:
+            self._enviar_js("ocultarProgreso()")
+            self._enviar_js("habilitarBoton()")
+
+    # --- Lógica de Negocio: Macal ---
+
     def ejecutar_macal(self):
-        """
-        Lanza la ejecución del extractor de Macal en un hilo separado.
-        """
-        logger.info("Solicitud recibida para ejecutar el extractor de Macal.")
+        """Inicia el extractor de Macal."""
+        logger.info("Iniciando extractor Macal.")
         try:
             thread = threading.Thread(target=self._run_proceso_macal, daemon=True)
             thread.start()
             return {'success': True, 'message': 'Proceso de Macal iniciado.'}
         except Exception as e:
-            logger.error(f"Error al iniciar el hilo de Macal: {e}")
-            return {'success': False, 'message': f'Error al iniciar el proceso: {e}'}
+            logger.error(f"Error al iniciar Macal: {e}")
+            return {'success': False, 'message': f'Error: {e}'}
 
     def _run_proceso_macal(self):
-            """
-            Contiene la lógica para ejecutar el script de Macal y notificar a la UI.
-            """
-            global window
-            logger.info("Iniciando la ejecución de macal.run_extractor...")
-            
-            def progress_callback(porcentaje, mensaje):
-                """Esta función se encargará de enviar el progreso a la interfaz."""
-                if window:
-                    # Escapamos comillas para no romper el string de JavaScript
-                    mensaje_escapado = mensaje.replace("'", "\\'")
-                    window.evaluate_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
-                
-            try:
-                # Define las URLs y el nombre de archivo aquí
-                SEARCH_URL = "https://api-net.macal.cl/api/v1/properties/search"
-                DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
-                OUTPUT_FILENAME = "propiedades_macal" # Carpeta de salida
-                os.makedirs(OUTPUT_FILENAME, exist_ok=True) # Asegura que la carpeta exista
-                output_filename = os.path.join(OUTPUT_FILENAME, "propiedades_macal_final.xlsx")
-
-                # Ejecuta la función principal de tu script
-                macal.run_extractor_macal(SEARCH_URL, DETAILS_URL, output_filename, progress_callback=progress_callback)
-                
-                # Si todo sale bien, notifica a la UI
-                if window:
-                    logger.info("Proceso de Macal finalizado con éxito.")
-                    window.evaluate_js("finalizarProcesoMacal('✅ Proceso Macal completado con éxito!', 'success')")
-
-            except Exception as e:
-                logger.error(f"Error crítico durante la ejecución de Macal: {e}")
-                # Si hay un error, notifica a la UI
-                if window:
-                    mensaje_error = f"Error en el proceso Macal: {e}".replace("'", "\\'")
-                    window.evaluate_js(f"finalizarProcesoMacal('{mensaje_error}', 'error')")
-
-    def _run_proceso_mercurio(self, url, paginas, columnas):
-        """
-        Ejecuta el orquestador y notifica a la UI si hubo cancelación o finalización.
-        """
-        global window
-        
-        def progress_callback(porcentaje, mensaje):
-            if window:
-                # Escapamos comillas simples en el mensaje para no romper el JS
-                mensaje_escapado = mensaje.replace("'", "\\'")
-                window.evaluate_js(f"actualizarProgreso({porcentaje}, '{mensaje_escapado}')")
-                
+        logger.info("Ejecutando macal.run_extractor...")
         try:
-            resultado = main.orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, progress_callback)
-            # Al final, actualizar mensaje en la UI
-            if cancel_event.is_set():
-                if window: # ✅ 3. Usa la variable window para llamar al método
-                    window.evaluate_js("actualizarMensajeUI('⛔ Proceso cancelado por el usuario.', 'warning')")
-            else:
-                if window:
-                    window.evaluate_js("actualizarMensajeUI('✅ Proceso completado con éxito!', 'success')")
+            SEARCH_URL = "https://api-net.macal.cl/api/v1/properties/search"
+            DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
+            output_filename = os.path.join(self.DIR_MACAL, "propiedades_macal_final.xlsx")
+
+            # Ejecución del script externo
+            macal.run_extractor_macal(
+                SEARCH_URL, DETAILS_URL, output_filename, 
+                progress_callback=self._actualizar_progreso_ui
+            )
+            
+            logger.info("Macal finalizado con éxito.")
+            self._enviar_js("finalizarProcesoMacal('✅ Proceso Macal completado con éxito!', 'success')")
 
         except Exception as e:
-            # Notificar error en UI
-            msg = f"Ocurrió un error inesperado durante la ejecución: {e}"
-            if window:
-                window.evaluate_js(f"actualizarMensajeUI('{msg}', 'error')")
+            logger.error(f"Error crítico en Macal: {e}")
+            mensaje_error = f"Error en Macal: {e}".replace("'", "\\'")
+            self._enviar_js(f"finalizarProcesoMacal('{mensaje_error}', 'error')")
+
+    # --- NUEVA LÓGICA: House Pricing ---
+    def seleccionar_archivos_hp(self):
+        """Abre diálogo nativo para elegir PDFs y los mueve a input_pdfs."""
+        try:
+            file_types = ('PDF Files (*.pdf)', 'All files (*.*)')
+            # Abre diálogo de selección múltiple
+            archivos = self._window.create_file_dialog(
+                webview.OPEN_DIALOG, 
+                allow_multiple=True, 
+                file_types=file_types
+            )
+
+            if not archivos:
+                return {'success': True, 'count': 0}
+
+            # Preparar carpeta de inputs (Limpiar anterior)
+            if os.path.exists(self.DIR_HP_INPUT):
+                shutil.rmtree(self.DIR_HP_INPUT)
+            os.makedirs(self.DIR_HP_INPUT)
+
+            # Copiar archivos seleccionados
+            for ruta_origen in archivos:
+                if os.path.isfile(ruta_origen):
+                    nombre = os.path.basename(ruta_origen)
+                    ruta_destino = os.path.join(self.DIR_HP_INPUT, nombre)
+                    shutil.copy2(ruta_origen, ruta_destino)
+
+            logger.info(f"Se copiaron {len(archivos)} PDFs a {self.DIR_HP_INPUT}")
+            return {'success': True, 'count': len(archivos)}
+
+        except Exception as e:
+            logger.error(f"Error seleccionando archivos: {e}")
+            return {'success': False, 'message': str(e)}
+
+    def ejecutar_house_pricing(self):
+        """Dispara el main_hp.py en un hilo separado."""
+        self.cancel_event.clear()
         
+        # Verificar si hay archivos
+        if not os.path.exists(self.DIR_HP_INPUT) or not os.listdir(self.DIR_HP_INPUT):
+            return {'success': False, 'message': 'No hay archivos cargados. Selecciona PDFs primero.'}
+
+        logger.info("Iniciando orquestador HP...")
+        
+        try:
+            thread = threading.Thread(target=self._run_proceso_hp, daemon=True)
+            thread.start()
+            return {'success': True, 'message': 'Proceso iniciado.'}
+        except Exception as e:
+            return {'success': False, 'message': f'Error al iniciar hilo: {e}'}
+
+    def _run_proceso_hp(self):
+        try:
+            # Aquí llamamos al main() de tu orquestador nuevo
+            # Nota: main_hp.main() no recibe argumentos, lee de ./input_pdfs
+            main_hp.main()
+
+            if self.cancel_event.is_set():
+                self._enviar_js("actualizarHPStatus('⛔ Proceso cancelado.', 'warning')")
+            else:
+                self._enviar_js("actualizarHPStatus('✅ Proceso masivo completado!', 'success')")
+
+        except Exception as e:
+            logger.error(f"Error fatal en HP: {e}")
+            msg = f"Error: {e}".replace("'", "\\'")
+            self._enviar_js(f"actualizarHPStatus('{msg}', 'error')")
         finally:
-            if window:
-                window.evaluate_js("ocultarProgreso()")
-                window.evaluate_js("habilitarBoton()")
-
-    def cancelar_proceso(self):
-        """
-        Permite al usuario cancelar el proceso en curso desde la UI.
-        """
-        global cancel_event
-        if cancel_event.is_set():
-            return {'success': False, 'message': 'No hay un proceso en ejecución para cancelar.'}
-        
-        cancel_event.set()
-        # Notifica inmediatamente a la UI
-        webview.evaluate_js("actualizarMensajeUI('⛔ El proceso fue cancelado por el usuario.', 'warning')")
-        return {'success': True, 'message': '⛔ El proceso fue cancelado por el usuario.'}
+            self._enviar_js("finalizarProcesoHP()")
 
 
+# --- Main Entry Point ---
 if __name__ == "__main__":
     
+    # 1. Configuración de entorno
+    ocultar_consola_windows()
+    
+    # 2. Inicialización API
     api = Api()
+    
+    # 3. Creación de ventana
     window = webview.create_window(
         "Extractor de Remates",
         "templates/index.html",
@@ -236,4 +292,8 @@ if __name__ == "__main__":
         resizable=True
     )
     
+    # 4. Vincular ventana a la API (Inyección de dependencia)
+    api.set_window(window)
+    
+    # 5. Iniciar Loop
     webview.start(debug=False)

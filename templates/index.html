@@ -26,6 +26,10 @@
       --macal-orange: #fd7e14;
       --macal-orange-hover: #e36d0d;
 
+      /* NUEVO: Identidad House Pricing (Indigo) */
+      --hp-indigo: #6610f2;
+      --hp-indigo-hover: #520dc2;
+
       --fluent-radius: 8px;
       --fluent-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
@@ -94,6 +98,12 @@
       color: var(--macal-orange) !important;
     }
 
+    /* NUEVO: Estilo activo para pestaña HP */
+    #hp-tab.active {
+      border-bottom: 3px solid var(--hp-indigo) !important;
+      color: var(--hp-indigo) !important;
+    }
+
     #macal-tab:hover {
       color: var(--macal-orange-hover);
     }
@@ -155,6 +165,19 @@
       box-shadow: 0 2px 4px rgba(253, 126, 20, 0.2);
     }
 
+    /* NUEVO: Botones House Pricing (Indigo) */
+    .btn-outline-indigo {
+      color: var(--hp-indigo);
+      border-color: var(--hp-indigo);
+      background: white;
+    }
+
+    .btn-outline-indigo:hover {
+      background-color: var(--hp-indigo);
+      color: white;
+      box-shadow: 0 2px 4px rgba(102, 16, 242, 0.2);
+    }
+
     /* Botón Carpeta (Neutro) */
     .btn-outline-secondary {
       color: var(--fluent-text-secondary);
@@ -213,6 +236,12 @@
               <button class="nav-link" id="macal-tab" data-bs-toggle="tab" data-bs-target="#macal-tab-pane"
                 type="button" role="tab" aria-controls="macal-tab-pane" aria-selected="false">
                 <i class="bi bi-building me-2"></i>Macal
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="hp-tab" data-bs-toggle="tab" data-bs-target="#hp-tab-pane" type="button"
+                role="tab" aria-controls="hp-tab-pane" aria-selected="false">
+                <i class="bi bi-graph-up-arrow me-2"></i>House Pricing
               </button>
             </li>
           </ul>
@@ -290,6 +319,34 @@
                 </div>
               </div>
 
+              <div class="tab-pane fade" id="hp-tab-pane" role="tabpanel" tabindex="0">
+                <div class="py-4 text-center">
+                  <div class="mb-3" style="color: var(--hp-indigo);">
+                    <i class="bi bi-graph-up-arrow" style="font-size: 3rem;"></i>
+                  </div>
+                  <h5 class="fw-semibold">House Pricing (Lote PDF)</h5>
+                  <p class="text-secondary small mb-4 px-4">
+                    Selecciona múltiples archivos PDF para procesarlos masivamente.
+                  </p>
+
+                  <div class="d-grid gap-3 col-10 mx-auto mb-4">
+                    <button class="btn btn-outline-primary" onclick="seleccionarArchivosHP()">
+                      <i class="bi bi-file-earmark-plus me-2"></i>Seleccionar PDFs
+                    </button>
+                    <small id="hp-file-count" class="text-muted fw-medium">Ningún archivo seleccionado</small>
+                  </div>
+
+                  <div class="d-grid gap-3 col-10 mx-auto mt-4">
+                    <button class="btn btn-outline-indigo" id="hpBtn" onclick="ejecutarHP()" disabled>
+                      <i class="bi bi-gear-wide-connected me-2"></i>Procesar Lote
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="abrirResultadosHP()">
+                      <i class="bi bi-folder2-open me-2"></i>Carpeta Salida
+                    </button>
+                  </div>
+                  <p id="hp-status" class="mt-3 text-center small fw-medium text-secondary"></p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -308,11 +365,14 @@
     </div>
     <div id="progress-percentage">0%</div>
     <div id="progress-message" class="text-secondary small">Iniciando...</div>
+    <button class="btn btn-sm btn-outline-danger mt-3 px-4" onclick="cancelarProceso()">
+      <i class="bi bi-x-circle me-1"></i> Cancelar
+    </button>
   </div>
 
   <script>
 
-    // 1. LÓGICA DE DETECCIÓN DINÁMICA (NUEVO)
+    // 1. LÓGICA DE DETECCIÓN DINÁMICA
     const urlInput = document.getElementById('url');
     const colInput = document.getElementById('columnas');
 
@@ -327,8 +387,6 @@
       } else {
         // Si borra o cambia a otra URL, rehabilitamos
         colInput.disabled = false;
-        // Opcional: Si quieres restaurar un valor por defecto al salir de Valpo, 
-        // podrías hacerlo aquí, pero dejarlo como está es buena UX también.
       }
     });
 
@@ -375,8 +433,6 @@
         ocultarProgreso();
         habilitarBoton()
         console.error(e);
-      } finally {
-        // No re-habilitar el botón aquí, se hace en el callback
       }
     }
 
@@ -397,6 +453,13 @@
 
     function habilitarBoton() {
       document.getElementById('submitBtn').disabled = false;
+    }
+
+    // Función cancelar global
+    async function cancelarProceso() {
+      const msgEl = document.getElementById('progress-message');
+      if (msgEl) msgEl.innerText = "Cancelando...";
+      await window.pywebview.api.cancelar_proceso();
     }
 
     function actualizarProgreso(porcentaje, mensaje) {
@@ -492,6 +555,80 @@
         }
       } catch (e) {
         actualizarMacalStatus('Error al intentar abrir la carpeta.', 'error');
+        console.error(e);
+      }
+    }
+
+    // --- NUEVO: FUNCIONES PARA HOUSE PRICING ---
+    async function seleccionarArchivosHP() {
+      try {
+        // Llamamos a Python para abrir el diálogo nativo
+        const response = await window.pywebview.api.seleccionar_archivos_hp();
+
+        if (response.success) {
+          const count = response.count;
+          const label = document.getElementById('hp-file-count');
+          const btn = document.getElementById('hpBtn');
+
+          if (count > 0) {
+            label.textContent = `${count} archivos listos para procesar.`;
+            label.className = "text-success fw-bold";
+            btn.disabled = false; // Habilitar botón de proceso
+            actualizarHPStatus('Archivos cargados. Listo para iniciar.', 'info');
+          } else {
+            label.textContent = "Ningún archivo seleccionado.";
+            btn.disabled = true;
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        actualizarHPStatus('Error al seleccionar archivos.', 'error');
+      }
+    }
+
+    async function ejecutarHP() {
+      const btn = document.getElementById('hpBtn');
+      btn.disabled = true; // Evitar doble clic
+
+      actualizarHPStatus('Iniciando orquestador...', 'info');
+      actualizarProgreso(0, "Arrancando motor HP...");
+
+      try {
+        // Ya no enviamos rol/comuna, el backend usará los archivos en 'input_pdfs'
+        const response = await window.pywebview.api.ejecutar_house_pricing();
+
+        if (!response.success) {
+          actualizarHPStatus(response.message, 'error');
+          finalizarProcesoHP();
+        }
+      } catch (e) {
+        actualizarHPStatus('Error crítico en JS.', 'error');
+        console.error(e);
+        finalizarProcesoHP();
+      }
+    }
+
+    function actualizarHPStatus(msg, tipo = 'info') {
+      const el = document.getElementById('hp-status');
+      el.textContent = msg;
+      let clase = 'mt-3 text-center fw-bold text-dark';
+      if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
+      else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
+      else if (tipo === 'info') clase = 'mt-3 text-center fw-bold text-primary';
+      el.className = clase;
+    }
+
+    function finalizarProcesoHP() {
+      document.getElementById('hpBtn').disabled = false;
+      ocultarProgreso();
+    }
+
+    async function abrirResultadosHP() {
+      actualizarHPStatus('Abriendo carpeta...', 'info');
+      try {
+        await window.pywebview.api.abrir_carpeta_hp();
+        setTimeout(() => actualizarHPStatus('', 'info'), 3000);
+      } catch (e) {
         console.error(e);
       }
     }
