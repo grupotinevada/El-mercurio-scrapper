@@ -55,15 +55,19 @@ def procesar_remates_valpo(cancel_event, entrada_datos, region):
     for idx, ruta_img in enumerate(imagenes):
         if cancel_event.is_set():
             logger.info("🛑 Proceso cancelado por usuario.")
-            break
+            return None # Retorna None para abortar
         
         logger.info(f"👉 Procesando página {idx + 1}/{len(imagenes)}: {os.path.basename(ruta_img)}")
         diccionario_resultados[ruta_img] = [] 
         
         try:
-            # Llamamos al pipeline LIMPIO
-            recortes_generados = pipeline_total_batch_adaptado(ruta_img, output_folder, logger)
+            # CORRECCIÓN: Pasar cancel_event
+            recortes_generados = pipeline_total_batch_adaptado(ruta_img, output_folder, logger, cancel_event)
             
+            # Si retorna None es porque se canceló dentro del pipeline
+            if recortes_generados is None and cancel_event.is_set():
+                return None
+
             if recortes_generados:
                 diccionario_resultados[ruta_img].extend(recortes_generados)
                 logger.info(f"   ✅ Se extrajeron {len(recortes_generados)} columnas.")
@@ -150,7 +154,8 @@ def fase1_segmentar_columnas_completo(img_limpia, p_ocr, h_factor, h_gap, r_acti
 # PIPELINE ADAPTADO (SIN PLOT)
 # ==========================================
 
-def pipeline_total_batch_adaptado(ruta_img, output_folder, logger):
+# CORRECCIÓN: Agregar cancel_event como argumento
+def pipeline_total_batch_adaptado(ruta_img, output_folder, logger, cancel_event):
     """
     Ejecuta el pipeline:
     1. Detectar bloque (Filtro Tesseract 'REMATE'...)
@@ -212,6 +217,9 @@ def pipeline_total_batch_adaptado(ruta_img, output_folder, logger):
             
             # Guardamos las columnas detectadas
             for i, col_img in enumerate(cols):
+                if cancel_event.is_set():
+                    return None # Señal de cancelación interna
+                    
                 col_filename = f"{base_name}_blk{idx_c}_col{i}.jpg"
                 col_path = os.path.join(output_folder, col_filename)
                 cv2.imwrite(col_path, col_img)

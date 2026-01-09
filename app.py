@@ -163,11 +163,14 @@ class Api:
 
         except Exception as e:
             msg = f"Error inesperado: {e}"
-            self._enviar_js(f"actualizarMensajeUI('{msg}', 'error')")
+            # CORRECCION: Escapar comillas para evitar SyntaxError en JS
+            msg_safe = msg.replace("'", "\\'").replace('"', '\\"').replace('\n', ' ')
+            self._enviar_js(f"actualizarMensajeUI('{msg_safe}', 'error')")
         
         finally:
             self._enviar_js("ocultarProgreso()")
-            self._enviar_js("habilitarBoton()")
+            # CORRECCION: El nombre de la funcion en JS es habilitarUI
+            self._enviar_js("habilitarUI()")
 
     # --- Lógica de Negocio: Macal ---
 
@@ -189,14 +192,18 @@ class Api:
             DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
             output_filename = os.path.join(self.DIR_MACAL, "propiedades_macal_final.xlsx")
 
-            # Ejecución del script externo
+            # CORRECCIÓN: Pasar self.cancel_event
             macal.run_extractor_macal(
                 SEARCH_URL, DETAILS_URL, output_filename, 
+                self.cancel_event,
                 progress_callback=self._actualizar_progreso_ui
             )
             
-            logger.info("Macal finalizado con éxito.")
-            self._enviar_js("finalizarProcesoMacal('✅ Proceso Macal completado con éxito!', 'success')")
+            if self.cancel_event.is_set():
+                self._enviar_js("finalizarProcesoMacal('⛔ Proceso cancelado.', 'warning')")
+            else:
+                logger.info("Macal finalizado con éxito.")
+                self._enviar_js("finalizarProcesoMacal('✅ Proceso Macal completado con éxito!', 'success')")
 
         except Exception as e:
             logger.error(f"Error crítico en Macal: {e}")
@@ -257,8 +264,9 @@ class Api:
     def _run_proceso_hp(self):
         try:
             # Aquí llamamos al main() de tu orquestador nuevo
-            # Nota: main_hp.main() no recibe argumentos, lee de ./input_pdfs
-            main_hp.main()
+            # Nota: main_hp.main() lee de ./input_pdfs
+            # CORRECCIÓN: Pasar self.cancel_event
+            main_hp.main(self.cancel_event)
 
             if self.cancel_event.is_set():
                 self._enviar_js("actualizarHPStatus('⛔ Proceso cancelado.', 'warning')")

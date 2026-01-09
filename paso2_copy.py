@@ -14,9 +14,8 @@ KEYWORDS_INMUEBLES = [
     "OFICINA", "INMUEBLE", "PROPIEDAD", "PREDIO", "HIJUELA", "FUNDO", 
     "VIVIENDA", "LOCAL", "LOTE"
 ]
-#ambas funciones pueden usar las mismas claves:
+
 CLAVES_SEPARADORES = [
-    # --- Patrones Originales ---
     r"REMATE",
     r"EXTRACTO",
     r"JUZGADO\s+DE\s+POLIC[ÍI]A\s+LOCAL",
@@ -65,7 +64,6 @@ def recortar_remates(texto: str):
     """
     patron_inicio = r"1616\s+REMATES\s+DE\s+PROPIEDADES|1616"
     
-    # --- LÍNEA MODIFICADA ---
     # Se añaden los nuevos códigos de fin al patrón, escapando los caracteres especiales [ y ]
     patron_fin = r"(1635\s+PERSONAS\s+BUSCADAS\s+Y\s+COSAS\s+PERDIDAS|1640\s+CITAN\s+A\s+REUNIÓN\s+INSTITUCIONES|\[CODE:1630\]|\[CODE:1635\]|\[CODE:1640\]|\[CODE:1300\]|\[CODE:1309\]|\[CODE:1312\]|\[CODE:1316\])"
 
@@ -118,8 +116,6 @@ def recortar_remates(texto: str):
         f.write(texto_cortado)
 
     return texto_cortado
-
-import re
 
 def separador_inteligente(match: re.Match) -> str:
     """
@@ -181,9 +177,8 @@ def pre_separar_remates_fusionados(texto: str) -> str:
     return texto_corregido
 
 
-
-
-def limpiar_encabezados(texto: str) -> str:
+# --- CORRECCIÓN 1: Agregar cancel_event ---
+def limpiar_encabezados(texto: str, cancel_event) -> str:
     logger.debug("Eliminando encabezados conocidos...")
     patrones_eliminar = [
         r"---\s+PÁGINA\s+\d+\s+---\s*\n\d+\s*\n",
@@ -199,6 +194,10 @@ def limpiar_encabezados(texto: str) -> str:
         r"^\s*EL\s+MERCURIO\s+DE\s+VALPARA[ÍI]SO\s*$"
     ]
     for patron in patrones_eliminar:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None # Retorna None para abortar
         texto = re.sub(patron, "", texto, flags=re.IGNORECASE | re.MULTILINE)
 
     patrones_union = [
@@ -210,10 +209,12 @@ def limpiar_encabezados(texto: str) -> str:
         (r"([a-z0-9,])\s*\n\s*([A-Z][a-z])", r"\1 \2")
     ]
     for patron, reemplazo in patrones_union:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None
         texto = re.sub(patron, reemplazo, texto, flags=re.IGNORECASE)
     
-    
-
     return texto
 
 
@@ -257,13 +258,16 @@ def limpieza(texto: str) -> str:
     return texto
 
 
-
-
-def extraer_parrafos_remates(texto: str) -> List[str]:
+# --- CORRECCIÓN 2: Agregar cancel_event ---
+def extraer_parrafos_remates(texto: str, cancel_event) -> List[str]:
     logger.debug("Extrayendo párrafos de remates...")
     parrafos_brutos = texto.split('\n\n')
     parrafos_limpios = []
     for p in parrafos_brutos:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None
         parrafo_procesado = " ".join(p.strip().splitlines())
         if parrafo_procesado:
             parrafos_limpios.append(parrafo_procesado)
@@ -277,11 +281,15 @@ def limpiar_encabezados_y_guardar(
     logger.info(f"Iniciando limpieza de encabezados para: {input_path}")
     with open(input_path, "r", encoding="utf-8") as f:
         texto = f.read()
+    
     texto_cortado = recortar_remates(texto) 
-    texto_limpio = limpiar_encabezados(texto_cortado)
+    
+    # CORRECCIÓN: Pasar cancel_event
+    texto_limpio = limpiar_encabezados(texto_cortado, cancel_event)
+    if texto_limpio is None: return None # Check de cancelación
+
     texto_clean = limpieza(texto_limpio)
     texto_pre_separado = pre_separar_remates_fusionados(texto_clean)
-    
     texto_final = insertar_separadores(texto_pre_separado)
     #texto_final = limpieza(texto_separado) 
 
@@ -294,6 +302,7 @@ def limpiar_encabezados_y_guardar(
         preview_archivos.mostrar_preview_html(output_path, cancel_event)
         
         if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
             return None
         
         logger.info(f"✅ Texto limpio y separado guardado en: {output_path}")
@@ -306,7 +315,8 @@ def limpiar_encabezados_y_guardar(
 # ==========================================
 # 🔍 NUEVA FUNCIÓN DE FILTRADO (Autos vs Casas)
 # ==========================================
-def filtrar_remates_inmuebles(lista_remates: List[dict]) -> tuple[List[dict], List[dict]]:
+# --- CORRECCIÓN 3: Agregar cancel_event ---
+def filtrar_remates_inmuebles(lista_remates: List[dict], cancel_event) -> tuple[List[dict], List[dict]]:
     """
     Recorre la lista de remates y separa los que contienen palabras clave de inmuebles
     de los que no (posibles autos, muebles, etc.).
@@ -317,6 +327,10 @@ def filtrar_remates_inmuebles(lista_remates: List[dict]) -> tuple[List[dict], Li
     logger.info("🕵️ Filtrando remates por tipo de bien (Inmuebles vs Otros)...")
     
     for item in lista_remates:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None, None
         texto = item['remate'].upper()
         
         # Estrategia LISTA BLANCA:
@@ -324,6 +338,8 @@ def filtrar_remates_inmuebles(lista_remates: List[dict]) -> tuple[List[dict], Li
         # Si no tiene ninguna, se descarta (probablemente es auto o mueble).
         es_inmueble = False
         for kw in KEYWORDS_INMUEBLES:
+            if cancel_event.is_set():
+                return None, None
             # Buscamos la palabra completa o parte de ella (ej: DEPARTAMENTO)
             if kw in texto:
                 es_inmueble = True
@@ -346,8 +362,9 @@ def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remate
         return None
     
     # 2. Extracción de Párrafos
-    parrafos = extraer_parrafos_remates(texto_limpio)
-    if cancel_event.is_set():
+    # CORRECCIÓN: Pasar cancel_event
+    parrafos = extraer_parrafos_remates(texto_limpio, cancel_event)
+    if cancel_event.is_set() or parrafos is None:
         return None
 
     logger.info(f"Se han detectado {len(parrafos)} bloques de texto.")
@@ -356,7 +373,12 @@ def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remate
     lista_cruda = [{"id_remate": i, "remate": p.strip()} for i, p in enumerate(parrafos, 1)]
     
     # 4. FILTRADO (NUEVO)
-    lista_validos, lista_descartados = filtrar_remates_inmuebles(lista_cruda)
+    # CORRECCIÓN: Pasar cancel_event
+    resultado_filtrado = filtrar_remates_inmuebles(lista_cruda, cancel_event)
+    if resultado_filtrado is None or resultado_filtrado[0] is None:
+        return None
+    
+    lista_validos, lista_descartados = resultado_filtrado
     
     if cancel_event.is_set():
         return None
@@ -379,12 +401,12 @@ def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remate
     # 5. Guardado de Archivos
     # A) JSON VÁLIDO (Inmuebles) -> Este sigue al Paso 3 (IA)
     with open(archivo_final, "w", encoding="utf-8") as f:
-        json.dump(lista_validos, f, indent=4, ensure_ascii=False)
+        json.dump(lista_validos_final, f, indent=4, ensure_ascii=False)
     
     # B) JSON DESCARTADO (Autos, etc) -> Se guarda por si acaso, pero no se procesa
     archivo_descarte = archivo_final.replace(".json", "_descartados.json")
     with open(archivo_descarte, "w", encoding="utf-8") as f:
-        json.dump(lista_descartados, f, indent=4, ensure_ascii=False)
+        json.dump(lista_descartados_final, f, indent=4, ensure_ascii=False)
         logger.info(f"🗑️ Remates descartados guardados en: {archivo_descarte}")
 
     # Preview HTML del válido
@@ -394,5 +416,6 @@ def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remate
     return archivo_final
 
 if __name__ == "__main__":
-    ruta_generada = procesar_remates("remates_extraidos.txt")
-    logger.info(f"Prueba finalizada. Ruta del archivo generado: {ruta_generada}")
+    # Dummy run
+    import threading
+    procesar_remates(threading.Event(), "remates_extraidos.txt")

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Extractor de Remates</title>
+  <title>Suite de Automatización</title>
   <link rel="icon" type="image/x-icon" href="redes.ico">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -11,7 +11,7 @@
   <style>
     /* --- FLUENT DESIGN SYSTEM TOKENS --- */
     :root {
-      --fluent-bg: #f3f3f3;
+      --fluent-bg: radial-gradient(circle at top left, #ffffff 60%, #cccccc 100%);
       --fluent-surface: #ffffff;
       --fluent-border: #e5e5e5;
       --fluent-text-primary: #1b1b1b;
@@ -19,102 +19,213 @@
 
       /* Colores Principales */
       --fluent-accent: #0067c0;
-      /* Mercurio Blue */
       --fluent-accent-hover: #005a9e;
-
-      /* Identidad Macal (Preservada) */
       --macal-orange: #fd7e14;
-      --macal-orange-hover: #e36d0d;
-
-      /* NUEVO: Identidad House Pricing (Indigo) */
       --hp-indigo: #6610f2;
-      --hp-indigo-hover: #520dc2;
 
-      --fluent-radius: 8px;
+      --fluent-radius: 12px;
+      /* Más redondeado para estilo Hub */
       --fluent-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --fluent-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.12);
     }
 
     body {
-      background-color: var(--fluent-bg);
+      background: var(--fluent-bg);
       font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
       color: var(--fluent-text-primary);
       height: 100vh;
-      overflow: hidden;
-      /* Evita scrollbar global si no es necesario */
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
-    /* Tarjeta Principal (Fluent Surface) */
-    .fluent-card {
-      background-color: var(--fluent-surface);
+    /* --- LAYOUT GENERAL --- */
+    .app-header {
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 80px;
+    }
+
+    .main-container {
+      flex: 1;
+      padding: 0 40px 40px 40px;
+      position: relative;
+      overflow-y: auto;
+    }
+
+    /* --- HUB CARDS (ESTILO DE APPS) --- */
+    .hub-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 20px;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    .hub-card {
+      background: var(--fluent-surface);
       border: 1px solid var(--fluent-border);
       border-radius: var(--fluent-radius);
-      box-shadow: var(--fluent-shadow);
-      padding: 0;
-      /* El padding lo manejan los hijos */
-      overflow: hidden;
-    }
-
-    /* --- PESTAÑAS ESTILO FLUENT PIVOT --- */
-    .nav-tabs {
-      border-bottom: 1px solid var(--fluent-border);
-      padding: 0 16px;
-      background: #f9f9f9;
-      gap: 8px;
-    }
-
-    .nav-link {
-      border: none !important;
-      background: transparent !important;
-      color: var(--fluent-text-secondary);
-      font-weight: 500;
-      padding: 12px 16px;
+      padding: 30px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      text-align: left;
       position: relative;
-      transition: all 0.2s;
-      border-radius: 4px;
-      margin-top: 4px;
+      overflow: hidden;
+      height: 220px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
 
-    .nav-link:hover {
-      background-color: rgba(0, 0, 0, 0.04) !important;
+    .hub-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--fluent-shadow-hover);
+      border-color: transparent;
+    }
+
+    .hub-card .icon-wrapper {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin-bottom: 16px;
+      transition: transform 0.2s;
+    }
+
+    .hub-card:hover .icon-wrapper {
+      transform: scale(1.1);
+    }
+
+    /* Colores específicos de tarjetas */
+    .hub-card.mercurio .icon-wrapper {
+      background: rgba(0, 103, 192, 0.1);
+      color: var(--fluent-accent);
+    }
+
+    .hub-card.macal .icon-wrapper {
+      background: rgba(253, 126, 20, 0.1);
+      color: var(--macal-orange);
+    }
+
+    .hub-card.hp .icon-wrapper {
+      background: rgba(102, 16, 242, 0.1);
+      color: var(--hp-indigo);
+    }
+
+    .hub-card.mercurio:hover {
+      border-top: 4px solid var(--fluent-accent);
+    }
+
+    .hub-card.macal:hover {
+      border-top: 4px solid var(--macal-orange);
+    }
+
+    .hub-card.hp:hover {
+      border-top: 4px solid var(--hp-indigo);
+    }
+
+    .card-title {
+      font-weight: 600;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .card-desc {
+      font-size: 0.9rem;
+      color: var(--fluent-text-secondary);
+      line-height: 1.4;
+    }
+
+    .card-arrow {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      opacity: 0;
+      transform: translateX(-10px);
+      transition: all 0.3s;
+    }
+
+    .hub-card:hover .card-arrow {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    /* --- VISTAS DE LAS APPS --- */
+    .view-container {
+      display: none;
+      /* Oculto por defecto */
+      background: var(--fluent-surface);
+      border-radius: var(--fluent-radius);
+      box-shadow: var(--fluent-shadow);
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    .view-header {
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--fluent-border);
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    /* Botón Volver */
+    .btn-back {
+      border: none;
+      background: transparent;
+      font-weight: 600;
+      color: var(--fluent-text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-back:hover {
+      background: rgba(0, 0, 0, 0.05);
       color: var(--fluent-text-primary);
     }
 
-    /* Pestaña Activa: Indicador inferior */
-    .nav-link.active {
-      color: var(--fluent-text-primary) !important;
-      background-color: white !important;
-      /* Efecto tarjeta */
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-      font-weight: 600;
+    /* Animaciones */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
 
-    /* Indicador de color específico por pestaña */
-    #extractor-tab.active {
-      border-bottom: 3px solid var(--fluent-accent) !important;
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
-    #macal-tab.active {
-      border-bottom: 3px solid var(--macal-orange) !important;
-      color: var(--macal-orange) !important;
-    }
-
-    /* NUEVO: Estilo activo para pestaña HP */
-    #hp-tab.active {
-      border-bottom: 3px solid var(--hp-indigo) !important;
-      color: var(--hp-indigo) !important;
-    }
-
-    #macal-tab:hover {
-      color: var(--macal-orange-hover);
-    }
-
-    /* --- FORMULARIOS --- */
+    /* --- FORMULARIOS (Heredados) --- */
     .form-control {
       border: 1px solid var(--fluent-border);
-      border-radius: 4px;
-      padding: 8px 12px;
-      font-size: 14px;
-      transition: border 0.2s, box-shadow 0.2s;
+      border-radius: 6px;
+      padding: 10px 12px;
     }
 
     .form-control:focus {
@@ -122,241 +233,212 @@
       box-shadow: 0 0 0 2px rgba(0, 103, 192, 0.1);
     }
 
-    .form-label {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--fluent-text-secondary);
-      margin-bottom: 4px;
-    }
-
-    /* --- BOTONES --- */
     .btn {
-      border-radius: 4px;
+      border-radius: 6px;
+      padding: 10px 24px;
       font-weight: 500;
-      padding: 8px 20px;
-      font-size: 14px;
-      transition: all 0.15s;
-      border: 1px solid transparent;
     }
 
-    /* Botones Mercurio (Azul) */
-    .btn-outline-primary {
-      color: var(--fluent-accent);
-      border-color: var(--fluent-accent);
-      background: white;
-    }
-
-    .btn-outline-primary:hover {
+    /* Botones Específicos */
+    .btn-primary {
       background-color: var(--fluent-accent);
-      color: white;
-      box-shadow: 0 2px 4px rgba(0, 103, 192, 0.2);
+      border-color: var(--fluent-accent);
     }
 
-    /* Botones Macal (Naranja) */
-    .btn-outline-orange {
-      color: var(--macal-orange);
-      border-color: var(--macal-orange);
-      background: white;
+    .btn-primary:hover {
+      background-color: var(--fluent-accent-hover);
     }
 
-    .btn-outline-orange:hover {
+    .btn-orange {
       background-color: var(--macal-orange);
       color: white;
-      box-shadow: 0 2px 4px rgba(253, 126, 20, 0.2);
+      border: none;
     }
 
-    /* NUEVO: Botones House Pricing (Indigo) */
-    .btn-outline-indigo {
-      color: var(--hp-indigo);
-      border-color: var(--hp-indigo);
-      background: white;
+    .btn-orange:hover {
+      background-color: #e36d0d;
+      color: white;
     }
 
-    .btn-outline-indigo:hover {
+    .btn-indigo {
       background-color: var(--hp-indigo);
       color: white;
-      box-shadow: 0 2px 4px rgba(102, 16, 242, 0.2);
+      border: none;
     }
 
-    /* Botón Carpeta (Neutro) */
-    .btn-outline-secondary {
-      color: var(--fluent-text-secondary);
-      border-color: var(--fluent-border);
-      background: #fafafa;
+    .btn-indigo:hover {
+      background-color: #520dc2;
+      color: white;
     }
 
-    .btn-outline-secondary:hover {
-      background-color: #e0e0e0;
-      color: var(--fluent-text-primary);
-      border-color: #d0d0d0;
-    }
-
-    /* Overlay de Progreso (Glass) */
+    /* Overlay de Progreso */
     #progress-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(255, 255, 255, 0.85);
-      /* Fondo blanco translúcido */
-      backdrop-filter: blur(5px);
-      z-index: 1050;
+      background-color: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      z-index: 2000;
       display: none;
       justify-content: center;
       align-items: center;
       flex-direction: column;
-      color: var(--fluent-text-primary);
     }
 
     #progress-percentage {
-      color: var(--fluent-accent);
-      font-family: 'Segoe UI Display', sans-serif;
+      font-size: 2rem;
+      font-weight: 300;
+      color: var(--fluent-text-primary);
+      margin-top: 15px;
     }
   </style>
 </head>
 
-<body class="d-flex align-items-center justify-content-center">
+<body>
 
-  <div class="container">
-    <div class="row justify-content-center">
-      <div class="col-lg-7 col-md-9">
+  <div class="app-header">
+    <div>
+      <h4 class="m-0 fw-bold" id="header-title"><i class="bi bi-robot me-2"></i>Extractor Roberto</h4>
+      <small class="text-muted" id="header-subtitle">Selecciona una herramienta para comenzar</small>
+    </div>
+    <button class="btn-back d-none" id="globalBackBtn" onclick="volverAlHub()">
+      <i class="bi bi-arrow-left"></i> Volver al Inicio
+    </button>
+  </div>
 
-        <div class="fluent-card">
+  <div class="main-container">
 
-          <ul class="nav nav-tabs" id="myTab" role="tablist">
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active" id="extractor-tab" data-bs-toggle="tab"
-                data-bs-target="#extractor-tab-pane" type="button" role="tab" aria-controls="extractor-tab-pane"
-                aria-selected="true">
-                <i class="bi bi-newspaper me-2"></i>Mercurio
-              </button>
-            </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link" id="macal-tab" data-bs-toggle="tab" data-bs-target="#macal-tab-pane"
-                type="button" role="tab" aria-controls="macal-tab-pane" aria-selected="false">
-                <i class="bi bi-building me-2"></i>Macal
-              </button>
-            </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link" id="hp-tab" data-bs-toggle="tab" data-bs-target="#hp-tab-pane" type="button"
-                role="tab" aria-controls="hp-tab-pane" aria-selected="false">
-                <i class="bi bi-graph-up-arrow me-2"></i>House Pricing
-              </button>
-            </li>
-          </ul>
+    <div id="hub-view" class="hub-grid">
 
-          <div class="card-body p-4">
-            <div class="tab-content" id="myTabContent">
+      <div class="hub-card mercurio" onclick="abrirAplicacion('mercurio')">
+        <div>
+          <div class="icon-wrapper"><i class="bi bi-newspaper"></i></div>
+          <div class="card-title">Extractor El Mercurio</div>
+          <div class="card-desc">Procesa remates judiciales desde el visor digital del diario. Santiago y Valparaíso.
+          </div>
+        </div>
+        <div class="card-arrow text-primary"><i class="bi bi-arrow-right-circle-fill fs-4"></i></div>
+      </div>
 
-              <div class="tab-pane fade show active" id="extractor-tab-pane" role="tabpanel" tabindex="0">
-                <div class="text-center mb-4">
-                  <h4 class="mb-1 fw-semibold" style="color: var(--fluent-text-primary);">Extractor de Remates</h4>
-                  <small class="text-muted">El Mercurio (Santiago / Valparaíso)</small>
-                </div>
+      <div class="hub-card macal" onclick="abrirAplicacion('macal')">
+        <div>
+          <div class="icon-wrapper"><i class="bi bi-building"></i></div>
+          <div class="card-title">Portal Macal</div>
+          <div class="card-desc">Extracción automática de propiedades disponibles y generación de reportes Excel.</div>
+        </div>
+        <div class="card-arrow text-warning"><i class="bi bi-arrow-right-circle-fill fs-4"></i></div>
+      </div>
 
-                <div class="row g-3">
-                  <div class="col-12">
-                    <label for="url" class="form-label">
-                      URL del Diario (Visor Papel)
-                      <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" data-bs-placement="top"
-                        title="Ingrese la URL del visor digital del diario, justo en la primera pagina donde se encuentran los remates de propiedades"></i>
-                    </label>
-                    <div class="input-group">
-                      <span class="input-group-text bg-light border-end-0 text-secondary"><i
-                          class="bi bi-link-45deg"></i></span>
-                      <input type="text" class="form-control border-start-0 ps-0" id="url" placeholder="https://..."
-                        required>
-                    </div>
-                  </div>
+      <div class="hub-card hp" onclick="abrirAplicacion('hp')">
+        <div>
+          <div class="icon-wrapper"><i class="bi bi-graph-up-arrow"></i></div>
+          <div class="card-title">House Pricing</div>
+          <div class="card-desc">Tasación masiva y búsqueda de comparables basada en lotes de archivos PDF.</div>
+        </div>
+        <div class="card-arrow" style="color: var(--hp-indigo);"><i class="bi bi-arrow-right-circle-fill fs-4"></i>
+        </div>
+      </div>
 
-                  <div class="col-12">
-                    <label for="paginas" class="form-label">Páginas a procesar <i class="bi bi-info-circle ms-1"
-                        data-bs-toggle="tooltip" data-bs-placement="top"
-                        title="Ingrese la cantidad de páginas que desea procesar, se definen desde la primera pagina con remates a la ultima con remates"></i></label>
-                    <input type="number" class="form-control" id="paginas" placeholder="Ej: 5" required>
-                  </div>
-                  <div class="col-12">
-                    <label for="columnas" class="form-label">Columnas (Layout)
-                      <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" data-bs-placement="top"
-                        title="IMPORTANTE: Solo aplica en diario el mercurio Santiago, es el numero de columnas totales por hoja de diario"></i>
-                    </label>
-                    <input type="number" class="form-control" id="columnas" value="7" placeholder="Ej: 7" required>
-                  </div>
-                </div>
+    </div>
 
-                <div class="d-grid gap-2 mt-4">
-                  <button class="btn btn-outline-primary" id="submitBtn" onclick="enviar()">
-                    <i class="bi bi-play-circle-fill me-2"></i>Iniciar Extracción
-                  </button>
-                  <button class="btn btn-outline-secondary" id="openFolderBtn" onclick="abrirResultados()">
-                    <i class="bi bi-folder2-open me-2"></i>Abrir Resultados
-                  </button>
-                </div>
+    <div id="view-mercurio" class="view-container">
+      <div class="view-header">
+        <div class="icon-wrapper bg-light text-primary rounded p-2"><i class="bi bi-newspaper fs-4"></i></div>
+        <div>
+          <h5 class="m-0 fw-bold">Extractor El Mercurio</h5>
+          <small class="text-muted">Configura los parámetros de búsqueda</small>
+        </div>
+      </div>
 
-                <p id="status" class="mt-3 text-center small fw-medium text-secondary"></p>
-              </div>
+      <div class="row g-3">
+        <div class="col-12">
+          <label for="url" class="form-label">URL del Diario (Visor Papel)</label>
+          <input type="text" class="form-control" id="url" placeholder="https://..." required>
+        </div>
+        <div class="col-md-6">
+          <label for="paginas" class="form-label">Páginas a procesar</label>
+          <input type="number" class="form-control" id="paginas" placeholder="Ej: 5" required>
+        </div>
+        <div class="col-md-6">
+          <label for="columnas" class="form-label">Columnas (Layout)</label>
+          <input type="number" class="form-control" id="columnas" value="7" placeholder="Ej: 7" required>
+        </div>
+      </div>
 
-              <div class="tab-pane fade" id="macal-tab-pane" role="tabpanel" tabindex="0">
-                <div class="py-4 text-center">
-                  <div class="mb-3 text-warning">
-                    <i class="bi bi-buildings-fill" style="font-size: 3rem; color: var(--macal-orange);"></i>
-                  </div>
-                  <h5 class="fw-semibold">Portal Inmobiliario Macal</h5>
-                  <p class="text-secondary small mb-4 px-4">
-                    Este módulo extraerá automáticamente todas las propiedades disponibles y generará un reporte Excel.
-                  </p>
+      <div class="d-flex gap-3 mt-4 pt-3 border-top">
+        <button class="btn btn-primary flex-grow-1" id="submitBtn" onclick="enviar()">
+          <i class="bi bi-play-circle-fill me-2"></i>Iniciar Extracción
+        </button>
+        <button class="btn btn-light border" id="openFolderBtn" onclick="abrirResultados()">
+          <i class="bi bi-folder2-open"></i>
+        </button>
+      </div>
+      <p id="status" class="mt-3 text-center small fw-medium text-secondary"></p>
+    </div>
 
-                  <div class="d-grid gap-3 col-10 mx-auto">
-                    <button class="btn btn-outline-orange" id="macalBtn" onclick="ejecutarMacal()">
-                      <i class="bi bi-rocket-takeoff me-2"></i>Iniciar Proceso Macal
-                    </button>
-                    <button class="btn btn-outline-secondary" onclick="abrirResultadosMacal()">
-                      <i class="bi bi-folder-symlink me-2"></i>Carpeta Macal
-                    </button>
-                  </div>
-                  <p id="macal-status" class="mt-3 text-center small fw-medium text-secondary"></p>
-                </div>
-              </div>
+    <div id="view-macal" class="view-container">
+      <div class="view-header">
+        <div class="icon-wrapper bg-light text-warning rounded p-2"><i class="bi bi-building fs-4"></i></div>
+        <div>
+          <h5 class="m-0 fw-bold">Portal Inmobiliario Macal</h5>
+          <small class="text-muted">Extracción web automatizada</small>
+        </div>
+      </div>
 
-              <div class="tab-pane fade" id="hp-tab-pane" role="tabpanel" tabindex="0">
-                <div class="py-4 text-center">
-                  <div class="mb-3" style="color: var(--hp-indigo);">
-                    <i class="bi bi-graph-up-arrow" style="font-size: 3rem;"></i>
-                  </div>
-                  <h5 class="fw-semibold">House Pricing (Lote PDF)</h5>
-                  <p class="text-secondary small mb-4 px-4">
-                    Selecciona múltiples archivos PDF para procesarlos masivamente.
-                  </p>
+      <div class="text-center py-4">
+        <p class="text-secondary px-5 mb-4">
+          Este módulo navegará automáticamente por el portal Macal para recopilar la información actualizada de los
+          remates.
+        </p>
+        <div class="d-grid gap-3 col-8 mx-auto">
+          <button class="btn btn-orange" id="macalBtn" onclick="ejecutarMacal()">
+            <i class="bi bi-rocket-takeoff me-2"></i>Iniciar Proceso Macal
+          </button>
+          <button class="btn btn-light border" onclick="abrirResultadosMacal()">
+            <i class="bi bi-folder-symlink me-2"></i>Abrir Carpeta
+          </button>
+        </div>
+        <p id="macal-status" class="mt-3 text-center small fw-medium text-secondary"></p>
+      </div>
+    </div>
 
-                  <div class="d-grid gap-3 col-10 mx-auto mb-4">
-                    <button class="btn btn-outline-primary" onclick="seleccionarArchivosHP()">
-                      <i class="bi bi-file-earmark-plus me-2"></i>Seleccionar PDFs
-                    </button>
-                    <small id="hp-file-count" class="text-muted fw-medium">Ningún archivo seleccionado</small>
-                  </div>
+    <div id="view-hp" class="view-container">
+      <div class="view-header">
+        <div class="icon-wrapper bg-light rounded p-2" style="color: var(--hp-indigo);"><i
+            class="bi bi-graph-up-arrow fs-4"></i></div>
+        <div>
+          <h5 class="m-0 fw-bold">House Pricing Lote</h5>
+          <small class="text-muted">Procesamiento masivo de PDFs</small>
+        </div>
+      </div>
 
-                  <div class="d-grid gap-3 col-10 mx-auto mt-4">
-                    <button class="btn btn-outline-indigo" id="hpBtn" onclick="ejecutarHP()" disabled>
-                      <i class="bi bi-gear-wide-connected me-2"></i>Procesar Lote
-                    </button>
-                    <button class="btn btn-outline-secondary" onclick="abrirResultadosHP()">
-                      <i class="bi bi-folder2-open me-2"></i>Carpeta Salida
-                    </button>
-                  </div>
-                  <p id="hp-status" class="mt-3 text-center small fw-medium text-secondary"></p>
-                </div>
-              </div>
-            </div>
+      <div class="text-center py-3">
+        <div class="p-4 border border-dashed rounded bg-light mb-4">
+          <i class="bi bi-file-earmark-pdf fs-1 text-secondary"></i>
+          <p class="mb-3 mt-2 text-muted small">Carga tus informes de antecedentes (PDF) aquí.</p>
+
+          <button class="btn btn-outline-primary btn-sm" onclick="seleccionarArchivosHP()">
+            <i class="bi bi-plus-lg me-1"></i> Seleccionar Archivos
+          </button>
+          <div class="mt-2">
+            <small id="hp-file-count" class="text-primary fw-bold">Ningún archivo seleccionado</small>
           </div>
         </div>
 
-        <div class="text-center mt-3">
-          <small class="text-muted" style="font-size: 11px;">&copy; 2025 Sistema Automatizado v2.0</small>
+        <div class="d-flex gap-3 justify-content-center">
+          <button class="btn btn-indigo px-5" id="hpBtn" onclick="ejecutarHP()" disabled>
+            <i class="bi bi-gear-wide-connected me-2"></i>Procesar Todo
+          </button>
+          <button class="btn btn-light border" onclick="abrirResultadosHP()">
+            <i class="bi bi-folder2-open"></i>
+          </button>
         </div>
-
+        <p id="hp-status" class="mt-3 text-center small fw-medium text-secondary"></p>
       </div>
     </div>
+
   </div>
 
   <div id="progress-overlay">
@@ -364,28 +446,68 @@
       <span class="visually-hidden">Cargando...</span>
     </div>
     <div id="progress-percentage">0%</div>
-    <div id="progress-message" class="text-secondary small">Iniciando...</div>
-    <button class="btn btn-sm btn-outline-danger mt-3 px-4" onclick="cancelarProceso()">
-      <i class="bi bi-x-circle me-1"></i> Cancelar
+    <div id="progress-message" class="text-secondary small fw-bold">Iniciando...</div>
+    <button class="btn btn-sm btn-outline-danger mt-4 px-4 rounded-pill" onclick="cancelarProceso()">
+      Cancelar Operación
     </button>
   </div>
 
   <script>
+    // --- LÓGICA DE NAVEGACIÓN TIPO HUB ---
+    const hubView = document.getElementById('hub-view');
+    const backBtn = document.getElementById('globalBackBtn');
+    const headerTitle = document.getElementById('header-title');
+    const headerSubtitle = document.getElementById('header-subtitle');
 
-    // 1. LÓGICA DE DETECCIÓN DINÁMICA
+    function abrirAplicacion(appId) {
+      // 1. Ocultar Hub
+      hubView.style.display = 'none';
+
+      // 2. Mostrar Botón Volver
+      backBtn.classList.remove('d-none');
+
+      // 3. Ocultar todas las vistas primero
+      document.querySelectorAll('.view-container').forEach(el => el.style.display = 'none');
+
+      // 4. Mostrar la vista específica y actualizar textos
+      if (appId === 'mercurio') {
+        document.getElementById('view-mercurio').style.display = 'block';
+        headerTitle.innerText = "El Mercurio";
+        headerSubtitle.innerText = "Módulo de extracción prensa";
+      } else if (appId === 'macal') {
+        document.getElementById('view-macal').style.display = 'block';
+        headerTitle.innerText = "Macal";
+        headerSubtitle.innerText = "Portal de remates online";
+      } else if (appId === 'hp') {
+        document.getElementById('view-hp').style.display = 'block';
+        headerTitle.innerText = "House Pricing";
+        headerSubtitle.innerText = "Análisis de mercado masivo";
+      }
+    }
+
+    function volverAlHub() {
+      // 1. Ocultar vistas
+      document.querySelectorAll('.view-container').forEach(el => el.style.display = 'none');
+
+      // 2. Mostrar Hub
+      hubView.style.display = 'grid'; // Grid layout para el hub
+
+      // 3. Resetear Header
+      headerTitle.innerText = "Automation Hub";
+      headerSubtitle.innerText = "Selecciona una herramienta para comenzar";
+      backBtn.classList.add('d-none');
+    }
+
+    // --- LÓGICA EXISTENTE DE MERCURIO ---
     const urlInput = document.getElementById('url');
     const colInput = document.getElementById('columnas');
 
-    // Escuchar cada cambio en el input de URL en tiempo real
     urlInput.addEventListener('input', function () {
       const val = this.value.toLowerCase();
-
-      // Si la URL es de Valparaíso
       if (val.includes('mercuriovalpo.cl')) {
         colInput.value = 7;
-        colInput.disabled = true; // Deshabilitar
+        colInput.disabled = true;
       } else {
-        // Si borra o cambia a otra URL, rehabilitamos
         colInput.disabled = false;
       }
     });
@@ -397,25 +519,22 @@
     function actualizarMensajeUI(msg, tipo = 'info') {
       const statusElement = document.getElementById('status');
       statusElement.textContent = msg;
-
       let clase = 'mt-3 text-center fw-bold text-dark';
       if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
       else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
       else if (tipo === 'warning') clase = 'mt-3 text-center fw-bold text-warning';
-
       statusElement.className = clase;
     }
 
     async function enviar() {
       const submitButton = document.getElementById('submitBtn');
-
       const data = {
         url: document.getElementById('url').value,
         paginas: document.getElementById('paginas').value,
         columnas: document.getElementById('columnas').value,
       };
 
-      submitButton.disabled = true;
+      bloquearUI();
       actualizarMensajeUI('Iniciando proceso...');
       actualizarProgreso(0, 'Validando datos...');
 
@@ -424,14 +543,12 @@
         if (!response.success) {
           actualizarMensajeUI(response.message, 'error');
           ocultarProgreso();
-          habilitarBoton()
-        } else {
-          // No hacer nada aquí, el backend se encarga del progreso
+          document.getElementById('submitBtn').disabled = false;
         }
       } catch (e) {
         actualizarMensajeUI('Error de comunicación con el backend.', 'error');
         ocultarProgreso();
-        habilitarBoton()
+        document.getElementById('submitBtn').disabled = false;
         console.error(e);
       }
     }
@@ -439,23 +556,12 @@
     async function abrirResultados() {
       try {
         const response = await window.pywebview.api.abrir_carpeta();
-        console.log(response);
-        if (!response.success) {
-          actualizarMensajeUI(response.message, 'error');
-        } else {
-          actualizarMensajeUI(response.message, 'info');
-        }
+        if (!response.success) actualizarMensajeUI(response.message, 'error');
       } catch (e) {
-        actualizarMensajeUI('Error al comunicarse con el backend para abrir la carpeta.', 'error');
         console.error(e);
       }
     }
 
-    function habilitarBoton() {
-      document.getElementById('submitBtn').disabled = false;
-    }
-
-    // Función cancelar global
     async function cancelarProceso() {
       const msgEl = document.getElementById('progress-message');
       if (msgEl) msgEl.innerText = "Cancelando...";
@@ -469,13 +575,9 @@
 
       overlay.style.display = 'flex';
       messageEl.textContent = mensaje;
-
       targetPercentage = porcentaje;
 
-
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
+      if (progressInterval) clearInterval(progressInterval);
 
       if (currentPercentage < targetPercentage) {
         progressInterval = setInterval(() => {
@@ -493,33 +595,22 @@
     function ocultarProgreso() {
       const overlay = document.getElementById('progress-overlay');
       overlay.style.display = 'none';
-
-      if (progressInterval) {
-        clearInterval(progressInterval);
-        progressInterval = null;
-      }
+      if (progressInterval) clearInterval(progressInterval);
       currentPercentage = 0;
       targetPercentage = 0;
     }
 
+    // --- LÓGICA MACAL ---
     async function ejecutarMacal() {
       const macalButton = document.getElementById('macalBtn');
-      const statusElement = document.getElementById('macal-status');
-
-      // Deshabilitar botón y mostrar mensaje inicial
       macalButton.disabled = true;
-      actualizarMacalStatus('Iniciando proceso Macal, por favor espera...', 'info');
+      actualizarMacalStatus('Iniciando proceso Macal...', 'info');
       actualizarProgreso(0, 'Iniciando extracción de Macal...');
       try {
-        // Llamar a la nueva función del backend
         const response = await window.pywebview.api.ejecutar_macal();
-        if (!response.success) {
-          // Si hay un error al iniciar, mostrarlo y rehabilitar el botón
-          finalizarProcesoMacal(response.message, 'error');
-        }
-        // Si el inicio es exitoso, el backend notificará cuando termine
+        if (!response.success) finalizarProcesoMacal(response.message, 'error');
       } catch (e) {
-        finalizarProcesoMacal('Error de comunicación con el backend.', 'error');
+        finalizarProcesoMacal('Error de comunicación.', 'error');
         console.error(e);
       }
     }
@@ -527,56 +618,41 @@
     function actualizarMacalStatus(msg, tipo = 'info') {
       const statusElement = document.getElementById('macal-status');
       statusElement.textContent = msg;
-
       let clase = 'mt-3 text-center fw-bold text-dark';
       if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
       else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
-      else if (tipo === 'info') clase = 'mt-3 text-center fw-bold text-primary';
-
       statusElement.className = clase;
     }
 
     function finalizarProcesoMacal(msg, tipo = 'info') {
-      // Actualiza el mensaje final
       actualizarMacalStatus(msg, tipo);
-      // Vuelve a habilitar el botón
       document.getElementById('macalBtn').disabled = false;
       ocultarProgreso();
     }
+
     async function abrirResultadosMacal() {
-      actualizarMacalStatus('Abriendo carpeta de resultados...', 'info');
       try {
-        const response = await window.pywebview.api.abrir_carpeta_macal();
-        if (!response.success) {
-          actualizarMacalStatus(response.message, 'error');
-        } else {
-          // Opcional: limpiar mensaje o mostrar uno de éxito
-          setTimeout(() => actualizarMacalStatus('', 'info'), 3000); // Limpia el mensaje después de 3 seg
-        }
-      } catch (e) {
-        actualizarMacalStatus('Error al intentar abrir la carpeta.', 'error');
-        console.error(e);
-      }
+        await window.pywebview.api.abrir_carpeta_macal();
+      } catch (e) { console.error(e); }
     }
 
-    // --- NUEVO: FUNCIONES PARA HOUSE PRICING ---
+    // --- LÓGICA HOUSE PRICING ---
     async function seleccionarArchivosHP() {
       try {
-        // Llamamos a Python para abrir el diálogo nativo
         const response = await window.pywebview.api.seleccionar_archivos_hp();
-
         if (response.success) {
           const count = response.count;
           const label = document.getElementById('hp-file-count');
           const btn = document.getElementById('hpBtn');
 
           if (count > 0) {
-            label.textContent = `${count} archivos listos para procesar.`;
+            label.textContent = `${count} archivos listos.`;
             label.className = "text-success fw-bold";
-            btn.disabled = false; // Habilitar botón de proceso
-            actualizarHPStatus('Archivos cargados. Listo para iniciar.', 'info');
+            btn.disabled = false;
+            actualizarHPStatus('Archivos cargados.', 'info');
           } else {
             label.textContent = "Ningún archivo seleccionado.";
+            label.className = "text-muted fw-bold";
             btn.disabled = true;
           }
         }
@@ -588,21 +664,18 @@
 
     async function ejecutarHP() {
       const btn = document.getElementById('hpBtn');
-      btn.disabled = true; // Evitar doble clic
-
-      actualizarHPStatus('Iniciando orquestador...', 'info');
+      btn.disabled = true;
+      actualizarHPStatus('Procesando...', 'info');
       actualizarProgreso(0, "Arrancando motor HP...");
 
       try {
-        // Ya no enviamos rol/comuna, el backend usará los archivos en 'input_pdfs'
         const response = await window.pywebview.api.ejecutar_house_pricing();
-
         if (!response.success) {
           actualizarHPStatus(response.message, 'error');
           finalizarProcesoHP();
         }
       } catch (e) {
-        actualizarHPStatus('Error crítico en JS.', 'error');
+        actualizarHPStatus('Error crítico.', 'error');
         console.error(e);
         finalizarProcesoHP();
       }
@@ -614,7 +687,6 @@
       let clase = 'mt-3 text-center fw-bold text-dark';
       if (tipo === 'success') clase = 'mt-3 text-center fw-bold text-success';
       else if (tipo === 'error') clase = 'mt-3 text-center fw-bold text-danger';
-      else if (tipo === 'info') clase = 'mt-3 text-center fw-bold text-primary';
       el.className = clase;
     }
 
@@ -624,14 +696,23 @@
     }
 
     async function abrirResultadosHP() {
-      actualizarHPStatus('Abriendo carpeta...', 'info');
       try {
         await window.pywebview.api.abrir_carpeta_hp();
-        setTimeout(() => actualizarHPStatus('', 'info'), 3000);
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) { console.error(e); }
     }
+
+    function bloquearUI() {
+      const btn = document.getElementById('submitBtn');
+      if (btn) btn.disabled = true;
+    }
+
+    function habilitarUI() {
+      const btn = document.getElementById('submitBtn');
+      if (btn) btn.disabled = false;
+    }
+
+
+
 
   </script>
 

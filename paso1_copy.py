@@ -1,12 +1,12 @@
 # paso1.py - Encapsulado para uso desde otros módulos
 # EXTRACTOR DE REMATES JUDICIALES
 
-# pégalo en paso1.py
 import os
 import sys
 import time
 from datetime import datetime
 import re
+import uuid  # NECESARIO PARA PERFILES ÚNICOS
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -25,37 +25,27 @@ import shutil
 from dotenv import load_dotenv
 from collections import Counter
 
-def run_extractor( url: str, paginas: int, columnas: int):
+# SE AGREGA cancel_event A LOS ARGUMENTOS
+def run_extractor(url: str, paginas: int, columnas: int, cancel_event):
     from logger import get_logger, log_section, dbg
 
     logger = get_logger("paso1", log_dir="logs", log_file="paso1.log")
     logger.info("Ejecutando Paso 1...")
 
-
-
-# --------------------------------------------------------------------------
-# CONFIGURACIÓN DEL NAVEGADOR
-# --------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # CONFIGURACIÓN DEL NAVEGADOR
+    # --------------------------------------------------------------------------
     chrome_options = Options()
 
-    # 1. Definir una ruta fija para el perfil temporal
-    # Usamos un nombre constante para poder localizarlo y borrarlo en cada ejecución
-    clean_profile_path = os.path.join(tempfile.gettempdir(), "chrome_profile_remates_clean")
+    # 1. Definir una ruta DINÁMICA para el perfil temporal (Evita WinError 32)
+    unique_profile = f"chrome_profile_remates_{uuid.uuid4().hex}"
+    clean_profile_path = os.path.join(tempfile.gettempdir(), unique_profile)
+    
+    logger.info(f"🛠️ Usando perfil temporal: {clean_profile_path}")
 
-    # 2. Lógica de limpieza agresiva: Borrar la carpeta si existe
-    if os.path.exists(clean_profile_path):
-        try:
-            logger.info(f"🧹 Limpiando caché, cookies y datos antiguos en: {clean_profile_path}")
-            shutil.rmtree(clean_profile_path)  # Esto borra TODO: Cookies, LocalStorage, Cache
-        except Exception as e:
-            logger.warning(f"⚠️ No se pudo eliminar el perfil anterior (archivo en uso?): {e}")
-            # Si falla borrar (raro), creamos una ruta nueva con timestamp para asegurar limpieza
-            clean_profile_path = os.path.join(tempfile.gettempdir(), f"chrome_profile_remates_{int(time.time())}")
-
-    # 3. Asignar la ruta limpia a Chrome
+    # 2. Asignar la ruta limpia a Chrome
     chrome_options.add_argument(f"--user-data-dir={clean_profile_path}")
     chrome_options.add_argument("--incognito")
-    # Opciones estándar
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--log-level=3")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
@@ -65,7 +55,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
     
     # Iniciar driver
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    wait = WebDriverWait(driver, 25)
+    wait = WebDriverWait(driver, 30) # Aumentado a 30s por seguridad
     
     load_dotenv()
     URL = url
@@ -81,7 +71,6 @@ def run_extractor( url: str, paginas: int, columnas: int):
         logger.info(f"\n{marco_horizontal}\n")
         logger.info("Empezando el proceso de extracción de remates judiciales...")
         logger.info(f"Datos de entrada:\n URL: {URL}, \n Usuario: {EMAIL}, \n Páginas a procesar: {PAGINAS_A_PROCESAR} \n Columnas: {COLUMNAS}")
-        
 
     modo_predeterminado()
 
@@ -93,8 +82,14 @@ def run_extractor( url: str, paginas: int, columnas: int):
             logger.warning(f"No se pudo guardar screenshot ({path}): {e}")
 
     def click_siguiente_pagina(driver, wait):
+        if cancel_event.is_set(): return # Check de cancelación
         xpath_next = ("//a[.//div[contains(concat(' ', normalize-space(@class), ' '), ' next_arrow ') "
                       "and .//i[contains(@class,'fa-angle-right')]]]")
+        
+        # Espera de seguridad para el viewer
+        try: wait.until(EC.presence_of_element_located((By.ID, "viewer")))
+        except: pass
+
         current_text_layer = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#viewer .textLayer")))
         dbg(logger, "textLayer actual referenciado para staleness_of.")
         next_anchor = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_next)))
@@ -102,6 +97,8 @@ def run_extractor( url: str, paginas: int, columnas: int):
         dbg(logger, "Siguiente anchor localizado y llevado a viewport.")
         last_err = None
         for attempt in range(3):
+            if cancel_event.is_set(): return
+
             try:
                 next_anchor.click()
                 dbg(logger, f"Click normal en 'siguiente' (intento {attempt+1}).")
@@ -144,8 +141,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
         """
         Versión con LOGS DE PROCESO para depuración detallada.
         """
-        # Si 'logger' no es global, descomentar la siguiente línea o pasarlo como argumento
-        # from logger import get_logger; logger = get_logger("paso1_debug")
+        if cancel_event.is_set(): return ""
 
         logger.info(f"📊 [DEBUG] Iniciando captura de texto. Columnas esperadas: {COLUMNAS}")
         NUM_COLUMNAS_ESPERADAS = COLUMNAS  
@@ -161,6 +157,8 @@ def run_extractor( url: str, paginas: int, columnas: int):
             return ""
 
         for i, div in enumerate(divs):
+            if cancel_event.is_set(): return ""
+
             style = div.get_attribute('style')
             text = div.text.strip()
             if not text:
@@ -185,7 +183,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
             logger.warning("   ⚠️ No se extrajeron fragmentos válidos (all_fragments vacío).")
             return ""
 
-        # 2. Filtrar por font-size más común Y títulos numéricos
+        # 2. Filtro por font-size
         logger.info("   ⚙️ [FILTRO] Analizando tamaños de fuente...")
         if not any(f['font_size'] > 0 for f in all_fragments):
             logger.warning("      ⚠️ No se detectaron font-sizes > 0. Usando todos los fragmentos.")
@@ -198,7 +196,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
             filtered_fragments = []
             for frag in all_fragments:
                 is_main_font = abs(frag['font_size'] - main_font_size) < 0.1
-                is_numeric_title = frag['text'].isdigit() # A veces los títulos de remate son números con otra font
+                is_numeric_title = frag['text'].isdigit() 
                 if is_main_font or is_numeric_title:
                     filtered_fragments.append(frag)
             
@@ -236,38 +234,32 @@ def run_extractor( url: str, paginas: int, columnas: int):
             if col_index < num_columns:
                 columns[col_index].append(frag)
         
-        # Log de distribución
         distribucion = [len(c) for c in columns]
         logger.info(f"      📦 Distribución de items por columna: {distribucion}")
 
 
-        # 5. Armar texto columna por columna y limpiar con lógica por códigos especiales
+        # 5. Armar texto columna por columna
         full_page_text = []
         numeros_especiales = {"1300", "1640", "1309", "1312", "1315", "1320", "1321", "1316", "1612", "1616", "1630", "1635"}
-        remate_re = re.compile(r'^16\d{2}$')  # regla: 16xx se considera remate
+        remate_re = re.compile(r'^16\d{2}$') 
 
         logger.info("   📝 [ENSAMBLAJE] Procesando texto columna por columna...")
 
         for i, column in enumerate(columns):
-            if not column:
-                continue
+            if not column: continue
             
-            # Ordenar de arriba a abajo
             column.sort(key=lambda f: f['top'])
             
             output_lines = []
-            capture = False          # True = estamos acumulando texto de remate
-            seen_remate = False      # si vimos al menos un remate en esta columna
+            capture = False       
+            seen_remate = False   
             last_special_code = None
             
             logger.debug(f"      Processing Col {i+1} ({len(column)} items)...")
 
             for frag in column:
                 s = frag['text'].strip()
-                # Ajuste ligero: a veces el font size de titulos varia un poco, cuidado con el filtro estricto aqui
-                # Usamos el font_size del fragmento
-                
-                UMBRAL_FONT_SIZE_TITULO = 10.0 # Baje un poco el umbral por seguridad, ajustalo si es necesario
+                UMBRAL_FONT_SIZE_TITULO = 10.0 
                 is_special_code = s in numeros_especiales
                 
                 if is_special_code and frag['font_size'] > UMBRAL_FONT_SIZE_TITULO:
@@ -275,20 +267,18 @@ def run_extractor( url: str, paginas: int, columnas: int):
                     s_marcado = f"[CODE:{s}]"
                     
                     if remate_re.match(s):   # es remate (16xx)
-                        logger.info(f"         🟢 [START] Código de inicio detectado: {s} (Col {i+1})")
+                        logger.info(f"        🟢 [START] Código de inicio detectado: {s} (Col {i+1})")
                         output_lines.append(s_marcado)
                         capture = True
                         seen_remate = True
                     else:
-                        logger.info(f"         🔴 [STOP] Código de fin/ruido detectado: {s} (Col {i+1})")
+                        logger.info(f"        🔴 [STOP] Código de fin/ruido detectado: {s} (Col {i+1})")
                         capture = False
                     continue
 
-                # línea NO es código especial
                 if capture:
                     output_lines.append(s)
 
-            # Si no se detectó ningún remate en la columna, conservar sólo el último código especial
             if not seen_remate and last_special_code:
                 logger.debug(f"      ⚠️ Columna {i+1} sin remates. Conservando solo código: {last_special_code}")
                 output_lines = [last_special_code]
@@ -310,29 +300,6 @@ def run_extractor( url: str, paginas: int, columnas: int):
         logger.info(f"   🏁 [FIN] Texto capturado total: {len(final_text)} caracteres.")
         return final_text
     
-    
-    # def limpiar_por_codigos(texto):
-    #     lineas = texto.split("\n")
-    #     resultado = []
-    #     for linea in lineas:
-    #         codigo_match = re.match(r"^(\d{3,4})\b", linea.strip())
-    #         if codigo_match:
-    #             codigo = int(codigo_match.group(1))
-    #             # Guardar solo remates (16xx)
-    #             if 1600 <= codigo < 1700:
-    #                 resultado.append(linea)
-    #                 # marcar que estamos dentro de un remate
-    #                 continue
-    #             else:
-    #                 # ignorar bloques 13xx, no se agregan
-    #                 continue
-    #         else:
-    #             # Si no es encabezado de anuncio y estamos en modo "remate", lo guardamos
-    #             if resultado:
-    #                 resultado.append(linea)
-    #     return "\n".join(resultado)
-
-
 
     # LOGIN
     log_section(logger, "LOGIN")
@@ -341,6 +308,10 @@ def run_extractor( url: str, paginas: int, columnas: int):
         driver.delete_all_cookies()
         driver.get(URL)
         logger.info("🔐 Esperando el formulario de login...")
+        
+        if cancel_event.is_set(): 
+            driver.quit(); return None
+
         username_field = wait.until(EC.element_to_be_clickable((By.ID, "txtUsername")))
         password_field = driver.find_element(By.ID, "txtPassword")
         logger.info("🔑 Ingresando credenciales...")
@@ -355,8 +326,16 @@ def run_extractor( url: str, paginas: int, columnas: int):
         wait.until(EC.invisibility_of_element_located((By.ID, "modal_limit_articulos")))
         time.sleep(1.0)
         logger.info("👍 Modal cerrado. Vista del diario habilitada.")
+
+        # --- CORRECCIÓN CRÍTICA: Asegurar carga de página destino ---
+        # A veces el login redirige a portada. Forzamos ir a la URL correcta.
+        if driver.current_url != URL:
+             logger.info("📍 Redirigiendo a la página específica del diario...")
+             driver.get(URL)
+             time.sleep(2)
+
     except TimeoutException:
-        logger.error("❌ Error: El modal de login no desapareció a tiempo.")
+        logger.error("❌ Error: El modal de login no desapareció a tiempo o timeout.")
         if DEBUG_SCREENSHOTS:
             guardar_screenshot("logs/error_login.png")
         driver.quit()
@@ -374,7 +353,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
     try:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f_out:
             try:
-                #input("\n⏸️  Presiona Enter para continuar con la extracción...")
+                # Botón HD
                 logger.info("   🖼 Activando modo HD (si existe botón)...")
                 hd_button = wait.until(EC.element_to_be_clickable((By.ID, "active_pdf")))
                 driver.execute_script("arguments[0].click();", hd_button)
@@ -382,23 +361,35 @@ def run_extractor( url: str, paginas: int, columnas: int):
                 dbg(logger, "Botón HD clickeado.")
             except Exception as e:
                 logger.info(f"   ⚠️ No se pudo activar modo HD (continuo): {e}")
+            
             for page_num in range(1, PAGINAS_A_PROCESAR + 1):
+                if cancel_event.is_set(): 
+                    logger.info("🛑 Cancelado por usuario."); break
+
                 log_section(logger, "PAGE_PREP")
                 logger.info(f"📄 Procesando página {page_num}...")
                 time.sleep(1)
                 try:
                     logger.info("   🔍 Buscando el contenedor #viewer y .textLayer...")
-                    viewer_div = wait.until(EC.presence_of_element_located((By.ID, "viewer")))
+                    
+                    # Espera explicita del #viewer (Solución TimeoutException)
+                    try:
+                        viewer_div = wait.until(EC.presence_of_element_located((By.ID, "viewer")))
+                    except TimeoutException:
+                        logger.warning("   ⚠️ Timeout esperando #viewer. Reintentando carga de URL...")
+                        driver.get(URL) # Intento de recuperación
+                        viewer_div = wait.until(EC.presence_of_element_located((By.ID, "viewer")))
+
                     
                     # 1. Esperamos a que la capa exista
                     text_layer = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#viewer .textLayer")))
                     
                     # 2. VALIDACIÓN CRÍTICA: Esperar a que la capa tenga hijos (texto real)
-                    # Reintentamos hasta 10 veces (5 segundos aprox)
                     texto_cargado = False
                     for i in range(10):
+                        if cancel_event.is_set(): break
                         divs_texto = text_layer.find_elements(By.TAG_NAME, "div")
-                        if len(divs_texto) > 10: # Asumimos que una página válida tiene al menos 10 líneas
+                        if len(divs_texto) > 10: 
                             texto_cargado = True
                             logger.info(f"   ✅ Texto detectado: {len(divs_texto)} líneas encontradas.")
                             break
@@ -408,7 +399,6 @@ def run_extractor( url: str, paginas: int, columnas: int):
                     
                     if not texto_cargado:
                         logger.error("   ❌ La capa de texto existe pero está vacía después de esperar.")
-                        # Opcional: guardar screenshot aquí para debug visual
                         if DEBUG_SCREENSHOTS:
                             guardar_screenshot(f"logs/debug_vacio_pag_{page_num}.png")
 
@@ -417,11 +407,11 @@ def run_extractor( url: str, paginas: int, columnas: int):
                     if DEBUG_SCREENSHOTS:
                         guardar_screenshot(f"logs/error_page_{page_num}_viewer.png")
                     raise
+                
                 logger.info("   ✨ Extrayendo texto de la página...")
                 f_out.write(f"--- Página {page_num} ---\n\n")
                 try:
                     text = capture_text_from_textlayer(viewer_div)
-                    # text = limpiar_por_codigos(text1)
                     f_out.write(text + "\n\n")
                     logger.info(f"   💾 Texto de la página {page_num} guardado ({len(text)} chars).")
                 except Exception as e:
@@ -430,6 +420,7 @@ def run_extractor( url: str, paginas: int, columnas: int):
                         guardar_screenshot(f"logs/error_page_{page_num}.png")
                 finally:
                     f_out.flush()
+                
                 if page_num < PAGINAS_A_PROCESAR:
                     log_section(logger, "NEXT_PAGE")
                     try:
@@ -455,18 +446,25 @@ def run_extractor( url: str, paginas: int, columnas: int):
         
     finally:
         log_section(logger, "CLEANUP")
-
         try:
             driver.quit()
         except Exception:
             pass
         
+        # Limpiar carpeta temporal si se creó correctamente
+        try:
+            if os.path.exists(clean_profile_path):
+                shutil.rmtree(clean_profile_path)
+        except:
+            pass
+        
         logger.info(f"✅ Proceso completado. Texto guardado en: {OUTPUT_FILE}")
-
 
     logger.info(f"✅ Previsualización finalizada. Continuando con el siguiente paso.")
     return OUTPUT_FILE
 
 
 if __name__ == "__main__":
-    run_extractor()
+    import threading
+    # Dummy run for testing
+    run_extractor("", 1, 7, threading.Event())

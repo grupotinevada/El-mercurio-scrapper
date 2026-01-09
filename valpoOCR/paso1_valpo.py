@@ -17,7 +17,8 @@ from logger import get_logger, log_section, dbg
 
 
 # --- CONTROLADOR PRINCIPAL ---
-def run_extractor_ocr(url: str, paginas: int, region: str):
+# CORRECCIÓN: Se agrega cancel_event
+def run_extractor_ocr(url: str, paginas: int, region: str, cancel_event):
     logger = get_logger("paso1_valpo", log_dir="logs", log_file="paso1_valpo.log")
     logger.info(f"🌊 Iniciando Extractor {region.upper()} (Modo OCR)...")
 
@@ -49,6 +50,9 @@ def run_extractor_ocr(url: str, paginas: int, region: str):
         wait = WebDriverWait(driver, 20)
 
         log_section(logger, "LOGIN")
+        
+        if cancel_event.is_set(): return None, None
+
         driver.get(url)
         try:
             modal_selector = "div.modal-dialog"
@@ -64,14 +68,17 @@ def run_extractor_ocr(url: str, paginas: int, region: str):
         
         log_section(logger, "DESCARGA")
         for page_num in range(1, paginas + 1):
+            # Check de cancelación
+            if cancel_event.is_set():
+                logger.info("🛑 Proceso cancelado por usuario.")
+                return None, None
+
             logger.info(f"📄 Procesando página {page_num} de {paginas}")
             ruta_img = busquedaImagen(driver, page_num, output_dir, logger)
             if ruta_img:
                 lista_imagenes_descargadas.append(ruta_img)
             if page_num < paginas:
                 navegar_siguiente_pagina(driver, logger)
-
-
 
         logger.info(f"✅ Proceso Paso 1 finalizado. {len(lista_imagenes_descargadas)} imágenes en memoria.")
         
@@ -83,7 +90,8 @@ def run_extractor_ocr(url: str, paginas: int, region: str):
         raise e
     finally:
         if driver:
-            driver.quit()
+            try: driver.quit()
+            except: pass
 
 # --- FUNCIÓN DE DESCARGA (Opción 1: Headers Referer) ---
 def busquedaImagen(driver, page_num, output_dir, logger):
@@ -137,29 +145,18 @@ def busquedaImagen(driver, page_num, output_dir, logger):
         return None
 
 
-
-
 def navegar_siguiente_pagina(driver, logger):
     """
     Avanza a la siguiente página usando el botón 'icon-next'.
     """
     try:
         logger.info("   ➡️ Buscando botón 'Siguiente'...")
-        
-        # Selector basado en tu captura: <a class="icon icon-next">
         selector_next = "a.icon-next"
-        
-        # Esperar a que sea clickeable
         btn_next = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, selector_next))
         )
-        
-        # Usamos JavaScript para el click (más robusto en visores con capas)
         driver.execute_script("arguments[0].click();", btn_next)
-        
         logger.info("   ⏳ Cambiando página...")
-        
-        # Espera técnica para dar tiempo a que el DOM cambie y la nueva imagen inicie carga
         time.sleep(2) 
 
     except Exception as e:

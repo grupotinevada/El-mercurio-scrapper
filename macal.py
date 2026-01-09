@@ -80,6 +80,10 @@ def _normalize_key(text):
     return s
 
 def _flatten_features(feature_list):
+    """
+    Aplana la lista de características. 
+    NOTA: Se eliminó el check de cancel_event aquí por ser una operación atómica muy rápida.
+    """
     flat_dict = {}
     if not feature_list or not isinstance(feature_list, list):
         return flat_dict
@@ -160,7 +164,8 @@ def update_excel_with_new_properties(output_filename: str, new_data: list, id_fi
         return None
 
 # --- Función principal ---
-def run_extractor_macal(search_url: str, details_url: str, output_filename: str, progress_callback=None):
+# CORRECCIÓN: Se agrega cancel_event como argumento
+def run_extractor_macal(search_url: str, details_url: str, output_filename: str, cancel_event, progress_callback=None):
     start_time = time.perf_counter()
     session = requests.Session()
     all_property_ids = []
@@ -181,6 +186,12 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         logger.info(f"Se encontraron {total_entries} propiedades en {total_pages} páginas.")
 
         for page in range(1, total_pages + 1):
+            
+            # Check cancelación
+            if cancel_event.is_set():
+                logger.info("🛑 Proceso cancelado por usuario.")
+                return
+
             if TEST_MODE and len(all_property_ids) >= TEST_LIMIT:
                 break
             logger.info(f"Obteniendo IDs de la página {page}/{total_pages}...")
@@ -188,6 +199,8 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
             response = robust_get(session, search_url, params=params_page)
             page_data = response.json().get("entries", [])
             for prop in page_data:
+                if cancel_event.is_set():
+                    return
                 if 'id' in prop:
                     all_property_ids.append(prop['id'])
             time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
@@ -214,6 +227,12 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         return pd.DataFrame()
     
     for i, prop_id in enumerate(all_property_ids):
+        
+        # Check cancelación
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return
+
         if progress_callback:
             porcentaje = int(((i + 1) / total_ids) * 100)
             mensaje = f"Procesando propiedad {i + 1} de {total_ids}..."
@@ -310,7 +329,12 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
 
 
 if __name__ == "__main__":
+    import threading
     SEARCH_URL = "https://api-net.macal.cl/api/v1/properties/search"
     DETAILS_URL = "https://api-net.macal.cl/api/v1/properties/details"
     OUTPUT_FILENAME = "propiedades_macal_final.xlsx"
-    run_extractor_macal(SEARCH_URL, DETAILS_URL, OUTPUT_FILENAME)
+    
+    # Dummy event para prueba
+    dummy_event = threading.Event()
+    
+    run_extractor_macal(SEARCH_URL, DETAILS_URL, OUTPUT_FILENAME, dummy_event)

@@ -11,13 +11,25 @@ logger = get_logger("paso3", log_dir="logs", log_file="paso3.log")
 
 # ==================== FUNCIONES AUXILIARES ====================
 
-def funcion_limpieza_final(remates_json):
+# CORRECCIÓN 1: Agregar cancel_event como argumento
+def funcion_limpieza_final(remates_json, cancel_event):
     """
     Realiza una limpieza básica en el texto de cada remate.
     """
     remates_limpios = []
     logger.info("🧹 - Empezando limpieza final de textos...")
+    
+    # Verificación de seguridad por si se llama con None en pruebas antiguas
+    if cancel_event is None:
+        logger.warning("⚠️ cancel_event es None en limpieza final. Se ignora la cancelación.")
+
     for remate in remates_json:
+        
+        # Validación segura
+        if cancel_event and cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None # Retornamos None para indicar cancelación
+            
         texto = remate["remate"]
         texto = texto.replace('\n', ' ')
         texto = re.sub(r'\s+', ' ', texto)
@@ -141,7 +153,8 @@ def calcular_costo(usage, engine):
     }
     precios = precios_por_1M_tokens.get(engine)
     if not precios:
-        raise ValueError(f"Modelo {engine} no reconocido para calcular precio")
+        # Fallback genérico si el modelo no está en la lista (para evitar crashes)
+        precios = {"prompt": 0.15, "completion": 0.60}
     
     prompt_tokens = getattr(usage, "prompt_tokens", 0)
     completion_tokens = getattr(usage, "completion_tokens", 0)
@@ -163,8 +176,8 @@ def extraer_datos_remate(client, engine, texto_remate: str) -> dict:
         completion = client.chat.completions.create(
             model=engine,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,# NO SE PERMITE CAMBIAR LA TEMPERATURA EN LOS MODELOS 5
-            max_tokens=8192,   #FORMA DE LIMITAR TOKENS ANTES DE GPT 5
+            temperature=0.2,
+            max_tokens=8192,   
             # max_completion_tokens=8192, #para gtp5
             response_format={
                 "type": "json_schema",
@@ -251,13 +264,6 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
     load_dotenv()
     """
     Orquesta el proceso completo de limpieza, extracción con IA y guardado.
-    
-    Args:
-        input_json_path (str): Ruta al archivo JSON generado por el paso 2.
-        output_prefix (str): Prefijo para los archivos de salida (JSON y Excel).
-        
-    Returns:
-        tuple: Una tupla con las rutas de los archivos generados (json_path, excel_path).
     """
     API_KEY = os.getenv("OPENAI_API_KEY_EXTRACTOR") 
     MODEL_ENGINE = os.getenv("MODEL_ENGINE")
@@ -276,8 +282,12 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
         return None, None
 
     # --- PROCESAMIENTO ---
-    remates_limpios = funcion_limpieza_final(remates_iniciales)
+    # CORRECCIÓN 2: Se pasa cancel_event a la función de limpieza
+    remates_limpios = funcion_limpieza_final(remates_iniciales, cancel_event)
     
+    if remates_limpios is None: # Si devolvió None, fue cancelado
+        return None, None
+
     resultados = []
     #calculo % etapa 3
     total_remates = len(remates_limpios)
@@ -290,6 +300,11 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
     logger.info("🏁 - Comienzo del pipeline de extracción con IA")
 
     for i, remate in enumerate(remates_limpios):
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return None, None # Cancelación limpia
+            
         logger.info("-" * 50)
         logger.info(f"Procesando remate ID {remate['id_remate']}...")
 
@@ -348,8 +363,9 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
     if resultados:
         df = pd.json_normalize(resultados)
         columnas = df.columns.tolist()
-        columnas.remove('remate_texto')
-        columnas.append('remate_texto')
+        if 'remate_texto' in columnas:
+            columnas.remove('remate_texto')
+            columnas.append('remate_texto')
         df = df[columnas]
         
         # Guardamos el Excel
@@ -370,6 +386,8 @@ def run_processor(cancel_event, input_json_path: str, progress_callback, output_
 # ==================== BLOQUE DE EJECUCIÓN DIRECTA ====================
 
 if __name__ == "__main__":
+    import threading 
+    
     # Esta parte se ejecuta solo si corres el script directamente
     archivo_entrada_paso2 = "remates_separados.json" # Asegúrate que este archivo exista
     
@@ -385,8 +403,9 @@ if __name__ == "__main__":
             
     logger.info(f"Ejecutando el Paso 3 en modo de prueba con el archivo: {archivo_entrada_paso2}")
     
-    ### CORRECCIÓN 3: Se añaden argumentos dummy para que la función se pueda llamar.
-    mock_cancel_event = None
+    # CORRECCIÓN 3: Evento válido para pruebas
+    mock_cancel_event = threading.Event()
+    
     def mock_progress_callback(progress, message):
         print(f"  [Callback] {progress:.1f}% - {message}")
 

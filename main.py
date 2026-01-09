@@ -11,7 +11,8 @@ from logger import get_logger
 # --- Bloque para limpieza de archivos finales ---
 import shutil
 
-def cleanup_temp_files(logger, enable_cleanup: bool = True):
+# CORRECCION: Se agrega cancel_event como argumento
+def cleanup_temp_files(logger, cancel_event, enable_cleanup: bool = True):
     """
     Elimina archivos y carpetas temporales generados durante el proceso.
     Se puede desactivar con enable_cleanup=False (para desarrollo).
@@ -41,6 +42,10 @@ def cleanup_temp_files(logger, enable_cleanup: bool = True):
     ]
 
     for archivo in archivos_a_eliminar:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return
         try:
             if os.path.isfile(archivo):
                 os.remove(archivo)
@@ -49,6 +54,10 @@ def cleanup_temp_files(logger, enable_cleanup: bool = True):
             logger.warning(f"No se pudo eliminar archivo {archivo}: {e}")
 
     for carpeta in carpetas_a_eliminar:
+        
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario.")
+            return
         try:
             if os.path.isdir(carpeta):
                 shutil.rmtree(carpeta)
@@ -69,7 +78,8 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
     progress_callback(5, 'Etapa 1: Extrayendo datos web (Santiago)...')
     
     # Llama a tu extractor original
-    ruta_txt_bruto = paso1_copy.run_extractor(url, paginas, columnas)
+    # CORRECCION: Se pasa cancel_event a la funcion
+    ruta_txt_bruto = paso1_copy.run_extractor(url, paginas, columnas, cancel_event)
     
     if not ruta_txt_bruto:
         logger.error("PASO 1 (Santiago) FALLÓ - No se generó archivo TXT.")
@@ -86,6 +96,7 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
     return ruta_json_separado, ruta_txt_bruto
 
 # --- FLUJO 2: EL MERCURIO VALPARAÍSO (Nuevo flujo) ---
+# --- FLUJO 2: EL MERCURIO VALPARAÍSO ---
 def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, logger, region):
     """
     Lógica compartida para diarios regionales (Valparaíso y Antofagasta).
@@ -97,9 +108,10 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     logger.info("=" * 20 + f" PASO 1: DESCARGA IMÁGENES ({region.upper()}) " + "=" * 20)
     progress_callback(5, f'Etapa 1: Descargando páginas ({region})...')
     
-    # Pasamos la región por si en el futuro cambia la forma de logueo o selectores
-    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas, region)
+    # CORRECCIÓN: Pasar cancel_event
+    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas, region, cancel_event)
     
+    if cancel_event.is_set(): return None, None
     if not lista_imagenes:
         raise Exception(f"El extractor de {region} no obtuvo imágenes.")
 
@@ -107,9 +119,10 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     logger.info("=" * 20 + " PASO 2: SEPARACIÓN DE COLUMNAS " + "=" * 20)
     progress_callback(20, f'Etapa 2: Separando columnas ({region})...')
     
-    # El corte visual suele ser igual, pero pasamos la región por consistencia/logs
+    # CORRECCIÓN: procesar_remates_valpo ya recibía cancel_event, pero aseguramos que lo use bien internamente
     diccionario_cols = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes, region)
     
+    if cancel_event.is_set(): return None, None
     if not diccionario_cols:
          raise Exception("El Paso 2 no generó columnas válidas.")
 
@@ -117,9 +130,10 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     logger.info("=" * 20 + " PASO 2.5: FILTRADO INTELIGENTE " + "=" * 20)
     progress_callback(30, 'Etapa 2.5: Filtrando sección Remates...')
     
-    # AQUI ES CLAVE: Pasamos la región para saber qué código buscar (1612 vs otros)
-    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols, region)
+    # CORRECCIÓN: Pasar cancel_event
+    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols, region, cancel_event)
     
+    if cancel_event.is_set(): return None, None
     if not diccionario_cols_limpio:
         logger.warning(f"⚠️ El filtro 2.5 eliminó todas las columnas (No se encontraron códigos de {region}).")
 
@@ -127,7 +141,10 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     logger.info("=" * 20 + " PASO 3: UNIFICACIÓN Y OCR " + "=" * 20)
     progress_callback(50, 'Etapa 3: OCR en la nube...')
     
-    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio)
+    # CORRECCIÓN: Pasar cancel_event
+    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio, cancel_event)
+    
+    if cancel_event.is_set(): return None, None
     
     logger.info(f"✅ Se generó el archivo OCR bruto: {ruta_txt_ocr}")
 
@@ -138,7 +155,7 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     ruta_json_final = paso2_copy.procesar_remates(
         cancel_event, 
         ruta_txt_ocr, 
-        archivo_final=f"remates_{region}_temp.json" # Nombre temporal dinámico
+        archivo_final=f"remates_{region}_temp.json" 
     )
 
     if not ruta_json_final:
@@ -157,7 +174,7 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
 
     ruta_json_separado = None
     ruta_txt_bruto = None
-
+    region = "santiago"
     try:
         # 1. ENRUTAMIENTO INTELIGENTE
         if "digital.elmercurio.com" in url:
@@ -231,6 +248,8 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
 
             # Eliminar temporales (si aplica)
             for tmp_file in [ruta_txt_bruto, ruta_json_separado]:
+                if cancel_event.is_set():
+                    return
                 if tmp_file:
                     try:
                         if os.path.exists(tmp_file):
@@ -260,7 +279,8 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
         # Re-lanzamos la excepción para que app.py pueda mostrar el mensaje de error en la UI
         raise e
     finally:
-        cleanup_temp_files(logger, enable_cleanup)
+        # CORRECCION: Se pasa cancel_event a cleanup_temp_files
+        cleanup_temp_files(logger, cancel_event, enable_cleanup)
         logger.info("===== FIN DEL PROCESO =====\n")
 # --- Bloque para mantener funcionalidad CLI ---
 if __name__ == "__main__":

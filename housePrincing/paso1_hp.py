@@ -36,7 +36,10 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
         "informacion_general": {},
         "caracteristicas": {},
         "avaluo": { 
-            "Avalúo Total": 0, "Avalúo Exento": 0, "Avalúo Afecto": 0, "Contribuciones Semestrales": 0
+            "Avalúo Total": 0,
+            "Avalúo Exento": 0,
+            "Avalúo Afecto": 0,
+            "Contribuciones Semestrales": 0
         },
         "roles_cbr": [],
         "deudas": [],
@@ -48,6 +51,7 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
 
     lines = full_text.split('\n')
     
+    # --- 1. Extracción Estructural (Línea por Línea) ---
     for i, line in enumerate(lines):
         line_clean = line.strip()
         
@@ -77,9 +81,10 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
                  if re.search(r'\d', candidate) and len(candidate) > 5:
                      data["informacion_general"]["direccion"] = candidate
 
-        # Roles CBR
+        # Roles CBR (Lógica inteligente de búsqueda)
         if "Roles inscritos en CBR" in line:
             rol_line_index = -1
+            # Buscar línea de ROL hacia abajo
             for offset in range(1, 6): 
                 if i + offset < len(lines):
                     if "ROL" in lines[i+offset].upper() and re.search(r'\d', lines[i+offset]):
@@ -89,6 +94,7 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
             if rol_line_index != -1:
                 rol_line = lines[rol_line_index]
                 type_line = ""
+                # Buscar línea de TIPO hacia abajo (saltando vacíos)
                 for offset_type in range(1, 5):
                     if rol_line_index + offset_type < len(lines):
                         candidate = lines[rol_line_index + offset_type]
@@ -103,9 +109,12 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
 
                 for idx, rol_val in enumerate(valid_roles):
                     t_val = valid_types[idx] if idx < len(valid_types) else "S/I"
-                    data["roles_cbr"].append({"rol": rol_val, "tipo": t_val})
+                    data["roles_cbr"].append({
+                        "rol": rol_val,
+                        "tipo": t_val
+                    })
 
-        # Construcciones
+        # Construcciones (Estrategia de Anclas: N°, Año, M2)
         match_cons = re.search(r'^(\d+)\s+(.+?)\s+(20\d{2})\s+([\d,.]+)\s+(.+)$', line.strip())
         if match_cons:
             try:
@@ -136,7 +145,9 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
             except:
                 pass 
 
-    # Regex Globales
+    # --- 2. Regex Globales ---
+
+    # Características
     patterns_carac = {
         "Tipo": r'Tipo\s+([A-Za-z\s]+?)(?=\n|$)', 
         "Destino": r'Destino\s+([A-Za-z\s]+?)(?=\n|$)',
@@ -155,10 +166,14 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
             else:
                 data["caracteristicas"][key] = clean_text(val)
     
-    if data["caracteristicas"].get("M2 Terreno", 0.0) == 0.0:
-        data["caracteristicas"]["M2 Terreno"] = data["caracteristicas"].get("M2 Construcción", 0.0)
+    # REGLA DE NEGOCIO: M2 Terreno = 0 -> Copiar M2 Construcción
+    m2_construccion = data["caracteristicas"].get("M2 Construcción", 0.0)
+    m2_terreno = data["caracteristicas"].get("M2 Terreno", 0.0)
 
-    # Avalúo, Deudas, Transacción
+    if m2_terreno == 0.0 and m2_construccion > 0:
+        data["caracteristicas"]["M2 Terreno"] = m2_construccion
+
+    # Avalúo
     patterns_avaluo = {
         "Avalúo Total": r'Avalúo Total\s+(\$[\d\.]+)',
         "Avalúo Exento": r'Avalúo Exento\s+(\$[\d\.]+)',
@@ -170,15 +185,21 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
         if match:
             data["avaluo"][key] = clean_money(match.group(1))
 
+    # Deudas
     deuda_matches = re.findall(r'(Rol\s+\d+-[\dKk]+)\s+(\$[\d\.]+)', full_text, re.IGNORECASE)
     seen_deudas = set()
     for rol_str, monto_str in deuda_matches:
         if rol_str not in seen_deudas: 
-            data["deudas"].append({"rol": rol_str, "monto": clean_money(monto_str)})
+            data["deudas"].append({
+                "rol": rol_str,
+                "monto": clean_money(monto_str)
+            })
             seen_deudas.add(rol_str)
 
+    # Transacción
     match_monto = re.search(r'Monto\s+(UF\s+[\d\.]+)', full_text)
     match_fecha = re.search(r'Fecha SII\s+(\d{2}/\d{2}/\d{4})', full_text)
+    
     if match_monto: data["transaccion"]["monto"] = match_monto.group(1)
     if match_fecha: data["transaccion"]["fecha"] = match_fecha.group(1)
     
@@ -193,35 +214,49 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
     except:
         pass
 
+    # Información CBR
     patterns_cbr = {
         "Foja": r'Foja\s+(.+?)(?=\n|$)',
         "Número": r'Número\s+(.+?)(?=\n|$)',
         "Año": r'Año CBR\s+(.+?)(?=\n|$)',
         "Acto": r'Acto\s+(.+?)(?=\n|$)'
     }
+    
     for key, pat in patterns_cbr.items():
         match = re.search(pat, full_text)
-        if match: data["informacion_cbr"][key] = match.group(1).strip()
+        if match:
+            val = match.group(1).strip()
+            data["informacion_cbr"][key] = val
 
     return data
 
-# --- NUEVA FUNCIÓN DE LOTE (REEMPLAZA AL ENDPOINT) ---
-def procesar_lote_pdfs(carpeta_inputs: str) -> List[Dict[str, Any]]:
+# --- FUNCIÓN NUEVA: PROCESAMIENTO EN LOTE (MÓDULO) ---
+# CORRECCIÓN: Agregar cancel_event
+def procesar_lote_pdfs(carpeta_entrada: str, cancel_event) -> List[Dict[str, Any]]:
     """
-    Recorre una carpeta de PDFs, extrae la info de CADA UNO usando la lógica original,
-    y retorna una lista de JSONs estandarizados.
+    Recorre una carpeta de PDFs, extrae la info de cada uno y retorna una lista de JSONs.
     """
     resultados_json = []
     
-    if not os.path.exists(carpeta_inputs):
-        logger.error(f"La carpeta {carpeta_inputs} no existe.")
+    if not os.path.exists(carpeta_entrada):
+        logger.error(f"La carpeta {carpeta_entrada} no existe.")
         return []
 
-    archivos = [f for f in os.listdir(carpeta_inputs) if f.lower().endswith('.pdf')]
+    archivos = [f for f in os.listdir(carpeta_entrada) if f.lower().endswith(".pdf")]
+    
+    if not archivos:
+        logger.warning(f"No se encontraron archivos PDF en {carpeta_entrada}")
+        return []
+
     logger.info(f"Paso 1: Se encontraron {len(archivos)} PDFs para procesar.")
 
     for archivo in archivos:
-        ruta_completa = os.path.join(carpeta_inputs, archivo)
+        # Check cancelación
+        if cancel_event.is_set():
+            logger.info("🛑 Proceso cancelado por usuario en Paso 1.")
+            return []
+
+        ruta_completa = os.path.join(carpeta_entrada, archivo)
         
         try:
             full_text = ""
@@ -231,6 +266,8 @@ def procesar_lote_pdfs(carpeta_inputs: str) -> List[Dict[str, Any]]:
                      logger.warning(f"PDF extenso ({len(pdf.pages)} págs): {archivo}")
                 
                 for page in pdf.pages:
+                    if cancel_event.is_set():
+                        return []
                     text = page.extract_text(layout=True)
                     if text: full_text += text + "\n"
             
@@ -255,5 +292,6 @@ def procesar_lote_pdfs(carpeta_inputs: str) -> List[Dict[str, Any]]:
 
         except Exception as e:
             logger.error(f"❌ Error leyendo {archivo}: {e}")
-            
+            continue
+
     return resultados_json
