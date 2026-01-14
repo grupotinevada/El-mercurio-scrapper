@@ -20,6 +20,14 @@ PASSWORD = os.getenv("PASSWORD_HP")
 LOGIN_URL = os.getenv("LOGIN_URL")
 BUSQUEDA_URL = os.getenv("BUSQUEDA_URL")
 
+# ## NUEVO: Función para generar el link
+def generar_link_maps(lat, lng):
+    """Genera link directo a Google Maps con pin en la coordenada"""
+    if not lat or not lng:
+        return None
+    # Formato estándar: https://www.google.com/maps?q=LAT,LNG
+    return f"https://www.google.com/maps?q={lat},{lng}"
+
 def calcular_distancia(lat1, lon1, lat2, lon2):
     """Calcula metros entre dos puntos (Fórmula de Haversine)"""
     if lat1 is None or lat2 is None: return 99999999
@@ -44,8 +52,8 @@ def parse_propiedades(html, cancel_event):
             return []
         try:
             # 1. Extracción de Atributos Crudos
-            lat = card.get("data-lat")
-            lng = card.get("data-lng")
+            lat_str = card.get("data-lat")
+            lng_str = card.get("data-lng")
             price_fmt = card.get("data-price-formatted")
             uf_m2_fmt = card.get("data-ufm2-formatted")
             
@@ -53,17 +61,23 @@ def parse_propiedades(html, cancel_event):
             m2_util = card.get("data-m2-formatted")
             m2_total = card.get("data-m2-total-formatted")
             
+            # Conversión segura a float para cálculos
+            lat_float = float(lat_str) if lat_str else None
+            lng_float = float(lng_str) if lng_str else None
+
             # Construcción del objeto de datos con TODA LA INFO
             data = {
                 # Identificadores
                 "rol": card.get("data-rol"),
                 "direccion": card.get("data-name"),
                 "comuna": card.get("data-comuna"),
-                "link": f"https://www.housepricing.cl/propiedad/{card.get('data-hash')}/",
                 
                 # Datos Geográficos
-                "lat": float(lat) if lat else None,
-                "lng": float(lng) if lng else None,
+                "lat": lat_float,
+                "lng": lng_float,
+                
+                # ## NUEVO: Link de Google Maps generado aquí mismo
+                "link_maps": generar_link_maps(lat_str, lng_str),
                 
                 # Datos Económicos
                 "precio_uf": price_fmt,
@@ -155,7 +169,7 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, rol_target, cancel
 
         # F. PARSEAR Y ORDENAR POR DISTANCIA
         propiedades = parse_propiedades(driver.page_source, cancel_event)
-        
+        log.info(f"Se encontraron {len(propiedades)} propiedades para {rol_target} en {comuna_nombre} el centroide es {datos_retorno['lat_centro']}, {datos_retorno['lng_centro']}")
         # Calcular distancias si tenemos el centro
         if datos_retorno["lat_centro"]:
             for p in propiedades:

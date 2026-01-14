@@ -6,6 +6,8 @@ from datetime import datetime
 from colorama import Fore, Style, init
 
 init(autoreset=True)  # Inicializa colorama para colores en consola
+# logger.py
+DEBUG_CONSOLE = True    # Desarrollo
 
 class ColoredFormatter(logging.Formatter):
     """Formatter que agrega colores según nivel de log en consola"""
@@ -23,7 +25,8 @@ class ColoredFormatter(logging.Formatter):
         return f"{color}{msg}{Style.RESET_ALL}"
 
 def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
-               level_console=logging.INFO, level_file=logging.DEBUG) -> logging.Logger:
+               level_console=None, level_file=logging.DEBUG) -> logging.Logger:
+
     """
     Devuelve un logger configurado para archivo y consola con colores en consola.
     - name: nombre del logger (usualmente __name__ del módulo que lo llama)
@@ -41,9 +44,13 @@ def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
 
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)  # Siempre capturamos todo en el logger
-
+    if level_console is None:
+        level_console = logging.DEBUG if DEBUG_CONSOLE else logging.INFO
     # Evitar handlers duplicados
     if logger.handlers:
+        for h in logger.handlers:
+            if isinstance(h, logging.StreamHandler):
+                h.setLevel(level_console)
         return logger
 
     # Formato base

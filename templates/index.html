@@ -39,6 +39,25 @@
       flex-direction: column;
     }
 
+    /* Estilo para tarjeta deshabilitada */
+    .hub-card.disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      filter: grayscale(0.8);
+      pointer-events: auto;
+      /* Permite capturar el clic para mostrar la alerta */
+    }
+
+    .hub-card.disabled:hover {
+      transform: none;
+      box-shadow: var(--fluent-shadow);
+      border-top-color: var(--fluent-border) !important;
+    }
+
+    .hub-card.disabled .icon-wrapper {
+      transform: none !important;
+    }
+
     /* --- LAYOUT GENERAL --- */
     .app-header {
       padding: 20px 40px;
@@ -341,6 +360,17 @@
         </div>
       </div>
 
+      <!-- <div class="hub-card hp disabled" onclick="mostrarAviso()">
+        <div>
+          <div class="icon-wrapper"><i class="bi bi-graph-up-arrow"></i></div>
+          <div class="card-title">House Pricing</div>
+          <div class="card-desc">Tasación masiva y búsqueda de comparables basada en lotes de archivos PDF.</div>
+        </div>
+        <div class="card-arrow" style="color: var(--hp-indigo);">
+          <i class="bi bi-arrow-right-circle-fill fs-4"></i>
+        </div>
+      </div> -->
+
     </div>
 
     <div id="view-mercurio" class="view-container">
@@ -451,7 +481,7 @@
       Cancelar Operación
     </button>
   </div>
-
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script>
     // --- LÓGICA DE NAVEGACIÓN TIPO HUB ---
     const hubView = document.getElementById('hub-view');
@@ -483,6 +513,24 @@
         headerTitle.innerText = "House Pricing";
         headerSubtitle.innerText = "Análisis de mercado masivo";
       }
+    }
+    function mostrarAviso() {
+      const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+          toast.addEventListener('mouseenter', Swal.stopTimer)
+          toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+      });
+
+      Toast.fire({
+        icon: 'info',
+        title: 'Aún no está disponible en esta versión'
+      });
     }
 
     function volverAlHub() {

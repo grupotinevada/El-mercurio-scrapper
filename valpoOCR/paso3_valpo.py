@@ -21,23 +21,49 @@ def limpiar_basura_ocr(texto_crudo, logger, cancel_event):
         return ""
 
     lineas = texto_crudo.split('\n')
-    lineas_limpias = []
 
-    re_diario = re.compile(r'^\s*EL\s+MERCURIO\s+DE\s+VALPARA[ÍI]SO\s*$', re.IGNORECASE)
+    re_diario = re.compile(r'^\s*(EL\s+MERCURIO\s+DE\s+VALPARA[ÍI]SO|EL\s+SUR|EL\s+MERCURIO\s+DE\s+ANTOFAGASTA)\s*$', re.IGNORECASE)
     re_pagina = re.compile(r'^\s*(P[áa]gina|P[áa]g\.?)\s*\d+\s*$', re.IGNORECASE)
     re_fecha_header = re.compile(
-        r'.*\|\s*(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)\s+\d{1,2}\s+de\s+[a-z]+\s+de\s+\d{4}', 
+        r'.*\|\s*(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo).*\d{4}', 
         re.IGNORECASE
     )
 
+    EXCLUSIONES_EXACTAS = {
+        "EL MERCURIO DE VALPARAÍSO",
+        "EL SUR",
+        "EL MERCURIO DE ANTOFAGASTA",
+    }
+
+    EXCLUSIONES_PARCIALES = (
+        "EL MERCURIO DE VALPARAÍSO |",
+        "EL SUR |",
+        "EL MERCURIO DE ANTOFAGASTA |",
+        "CLASIFICADOS",
+        "CLASIFICADOS |",
+    )
+
+    lineas_limpias = []
+
     for linea in lineas:
-        if cancel_event.is_set(): return None
+        if cancel_event.is_set():
+            return None
 
         linea_strip = linea.strip()
-        if re_diario.match(linea_strip): continue
-        if re_pagina.match(linea_strip): continue
-        if re_fecha_header.match(linea_strip): continue
-        if "EL MERCURIO DE VALPARAÍSO |" in linea_strip.upper(): continue
+        linea_upper = linea_strip.upper()
+
+        if (
+            re_diario.match(linea_strip)
+            or re_pagina.match(linea_strip)
+            or re_fecha_header.match(linea_strip)
+        ):
+            continue
+
+        if linea_upper in EXCLUSIONES_EXACTAS:
+            continue
+
+        if any(excl in linea_upper for excl in EXCLUSIONES_PARCIALES):
+            continue
 
         lineas_limpias.append(linea)
 
@@ -169,15 +195,15 @@ def procesar_pagina_por_lotes(base_name, lista_columnas, output_folder, logger, 
     return texto_pagina
 
 # CORRECCIÓN: Agregar cancel_event
-def orquestador_ocr_valpo(diccionario_paginas, cancel_event, output_folder="temp_tiras_valpo"):
-    logger = get_logger("paso3_valpo", log_dir="logs", log_file="paso3_valpo.log")
-    logger.info("🏗️ Iniciando Paso 3: Unificación + Google Cloud Vision")
+def orquestador_ocr_valpo(diccionario_paginas, cancel_event,region, output_folder="temp_tiras_valpo"):
+    logger = get_logger(f"paso3_{region}", log_dir="logs", log_file=f"paso3_{region}.log")
+    logger.info(f"🏗️ Iniciando Paso 3: Unificación + Google Cloud Vision {region}")
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     texto_completo_final = ""
-    ruta_txt_salida = os.path.abspath("remates_valpo_ocr.txt")
+    ruta_txt_salida = os.path.abspath(f"remates_{region}_ocr.txt")
     total_paginas = len(diccionario_paginas)
 
     for i, (ruta_pagina, lista_columnas) in enumerate(diccionario_paginas.items()):

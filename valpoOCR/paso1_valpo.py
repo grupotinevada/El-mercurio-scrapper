@@ -74,7 +74,7 @@ def run_extractor_ocr(url: str, paginas: int, region: str, cancel_event):
                 return None, None
 
             logger.info(f"📄 Procesando página {page_num} de {paginas}")
-            ruta_img = busquedaImagen(driver, page_num, output_dir, logger)
+            ruta_img = busquedaImagen(url, driver, page_num, output_dir, logger)
             if ruta_img:
                 lista_imagenes_descargadas.append(ruta_img)
             if page_num < paginas:
@@ -94,7 +94,7 @@ def run_extractor_ocr(url: str, paginas: int, region: str, cancel_event):
             except: pass
 
 # --- FUNCIÓN DE DESCARGA (Opción 1: Headers Referer) ---
-def busquedaImagen(driver, page_num, output_dir, logger):
+def busquedaImagen(url, driver, page_num, output_dir, logger):
     """
     Busca la imagen y la guarda renombrándola con el número de secuencia (1.jpg, 2.jpg...).
     """
@@ -120,7 +120,7 @@ def busquedaImagen(driver, page_num, output_dir, logger):
         headers = {
             "User-Agent": driver.execute_script("return navigator.userAgent;"),
             "Referer": current_page_url,
-            "Origin": "https://www.mercuriovalpo.cl",
+            "Origin": "/".join(url.split("/", 3)[:3]),
             "Accept": "image/*"
         }
 

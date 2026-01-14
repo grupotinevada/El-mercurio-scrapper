@@ -28,6 +28,7 @@ def cleanup_temp_files(logger, cancel_event, enable_cleanup: bool = True):
         "remates_separados.json",
         
         "remates_separados_descartados.json",
+        "remates_valparaiso_temp_descartados.json",
 
 
         "remates_valpo_ocr.txt",
@@ -139,10 +140,11 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
 
     # --- PASO 3: Unificación + OCR (Nube) ---
     logger.info("=" * 20 + " PASO 3: UNIFICACIÓN Y OCR " + "=" * 20)
-    progress_callback(50, 'Etapa 3: OCR en la nube...')
+    progress_callback(50, 'Etapa 3: OCR en la nube... ')
     
     # CORRECCIÓN: Pasar cancel_event
-    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio, cancel_event)
+    logger.info(f"OCR REGION: {region}")
+    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio, cancel_event, region)
     
     if cancel_event.is_set(): return None, None
     
@@ -182,12 +184,17 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_santiago(
                 url, paginas, columnas, cancel_event, progress_callback, logger
             )
-            
-        elif "mercuriovalpo.cl" in url or "mercurioantofagasta.cl" in url:
-            # ---> Flujo Regional (Valpo / Antofa)
+        
+        elif any(domain in url for domain in ["mercuriovalpo.cl", "mercurioantofagasta.cl", "elsur.cl"]):
+            # ---> Flujo Regional (Valpo / Antofa / El Sur)
             
             # Determinamos la región
-            region = "valparaiso" if "mercuriovalpo.cl" in url else "antofagasta"
+            if "mercuriovalpo.cl" in url:
+                region = "valparaiso"
+            elif "mercurioantofagasta.cl" in url:
+                region = "antofagasta"
+            else:
+                region = "concepcion" # Identificador para El Sur
             
             ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_regional(
                 url, paginas, cancel_event, progress_callback, logger, region

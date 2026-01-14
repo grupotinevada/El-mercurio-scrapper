@@ -11,7 +11,7 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
     1. 'Resumen General': Datos maestros de la propiedad (1 fila por propiedad).
     2. 'Detalle Construcciones': Desglose de cada línea de construcción.
     3. 'Roles y Deudas': Roles inscritos en CBR y Deudas TGR.
-    4. 'Comparables Mercado': Data completa de House Pricing.
+    4. 'Comparables Mercado': Data completa de House Pricing + Links Maps.
     """
     logger.info(f"Iniciando generación de Excel completo para {len(lista_datos)} propiedades...")
 
@@ -147,7 +147,9 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
                     "Dormitorios": comp.get("dormitorios"),
                     "Baños": comp.get("banios"),
                     "Distancia (mts)": comp.get("distancia_metros"),
-                    "Link HousePricing": comp.get("link")
+                    
+                    # ## NUEVO: Columna con el link de Google Maps
+                    "Link Mapa": comp.get("link_maps", "")
                 })
 
     # --- CREACIÓN DE DATAFRAMES ---
