@@ -36,6 +36,15 @@
       flex-direction: column;
     }
 
+    mark.resaltado-busqueda {
+    background-color: #ccff00; /* Amarillo neón */
+    color: black;
+    padding: 0;
+    font-weight: bold;
+    border-radius: 2px;
+    box-shadow: 0 0 5px #ccff00; /* Un pequeño brillo */
+  }
+
     /* Contenedor principal */
     .fluent-container {
       background-color: var(--fluent-surface);
@@ -166,20 +175,27 @@
   <div class="fluent-container">
 
     <div class="editor-header">
-      <div id="file-title">
-        <span class="spinner-border spinner-border-sm text-primary" role="status"></span> Cargando...
-      </div>
+  <div id="file-title">
+    <span class="spinner-border spinner-border-sm text-primary" role="status"></span> Cargando...
+  </div>
 
-      <div class="d-flex align-items-center gap-3">
-        <small class="text-muted" style="font-size: 0.85em;">
-          <i class="bi bi-info-circle me-1"></i> Puedes editar el texto directamente
-        </small>
-        <div class="form-check form-switch m-0">
-          <input class="form-check-input" type="checkbox" id="toggleHighlight" checked onchange="toggleMode()">
-          <label class="form-check-label small text-secondary" for="toggleHighlight">Resaltar Mayúsculas</label>
-        </div>
-      </div>
+  <div class="input-group input-group-sm w-auto">
+    <span class="input-group-text bg-white border-end-0">
+      <i class="bi bi-search"></i>
+    </span>
+    <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Buscar palabra...">
+    <button class="btn btn-outline-secondary" type="button" onclick="limpiarBusqueda()">
+      <i class="bi bi-x"></i>
+    </button>
+  </div>
+
+  <div class="d-flex align-items-center gap-3">
+    <div class="form-check form-switch m-0">
+      <input class="form-check-input" type="checkbox" id="toggleHighlight" checked onchange="toggleMode()">
+      <label class="form-check-label small text-secondary" for="toggleHighlight">Mayúsculas</label>
     </div>
+  </div>
+</div>
 
     <div class="editor-container">
       <div id="editor" contenteditable="true" spellcheck="false"></div>
@@ -200,7 +216,8 @@
     </div>
 
   </div>
-
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js"></script>
   <script>
     const editor = document.getElementById('editor');
     const toggle = document.getElementById('toggleHighlight');
@@ -279,8 +296,40 @@
         pywebview.api.guardar_y_cerrar(contentToSave);
       }, 200);
     }
+
+    //LOGICA DEL BUSCADOR DE TEXTO 
+  const searchInput = document.getElementById('searchInput');
+  let markInstance = new Mark(editor);
+
+  searchInput.addEventListener('input', function() {
+    const keyword = this.value;
+    
+    // 1. Limpiar marcas anteriores de búsqueda
+    markInstance.unmark({
+      className: 'resaltado-busqueda', // Solo quitamos las de búsqueda, no las rojas
+      done: function() {
+        // 2. Si hay texto, marcar lo nuevo
+        if (keyword.length > 0) {
+          markInstance.mark(keyword, {
+            element: "mark",
+            className: "resaltado-busqueda",
+            separateWordSearch: false, // true = busca "hola" y "mundo" por separado
+            caseSensitive: false
+          });
+        }
+      }
+    });
+  });
+
+  function limpiarBusqueda() {
+    searchInput.value = '';
+    markInstance.unmark({ className: 'resaltado-busqueda' });
+    searchInput.focus();
+  }
+
+
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 
 </html>

@@ -100,7 +100,7 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
 # --- FLUJO 2: EL MERCURIO VALPARAÍSO ---
 def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, logger, region):
     """
-    Lógica compartida para diarios regionales (Valparaíso y Antofagasta).
+    Lógica compartida para diarios regionales (Valparaíso, Antofagasta y concepcion).
     Recibe el parámetro 'region' para diferenciar configuraciones.
     """
     logger.info(f"🟢 Iniciando flujo regional: El Mercurio de {region.capitalize()}")

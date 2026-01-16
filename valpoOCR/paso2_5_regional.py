@@ -130,6 +130,36 @@ def detectar_1612_concepcion(img, patron_inicio, logger): #VOLVEMOS AL INICIO PO
     # Retornamos la imagen original en caso de fallo
     return False, 0, img
 
+def detectar_1312_antofagasta(img, patron_inicio, logger):
+    """
+    Mantiene el flujo original probado para Valparaíso y Antofagasta.
+    Usa PSM 6 para bloques de texto uniforme.
+    """
+    config = '--psm 6'
+    try:
+        logger.debug(f"🔍 [OCR VALPO] Iniciando detección con patrón: {patron_inicio.pattern}")
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, config=config)
+        texto_completo = pytesseract.image_to_string(img, config=config)
+        
+        # DEBUG: Ver los primeros 100 caracteres del OCR
+        logger.debug(f"📄 [OCR VALPO] Texto bruto: {texto_completo.strip()[:100].replace('\n', ' ')}...")
+        
+        match = patron_inicio.search(texto_completo)
+        
+        if match:
+            logger.debug(f"🎯 [OCR VALPO] Match encontrado: '{match.group()}'")
+            y_corte = 0
+            for j in range(len(data['text'])):
+                if patron_inicio.search(data['text'][j]):
+                    y_corte = data['top'][j]
+                    logger.debug(f"📍 [OCR VALPO] Coordenada Y de corte: {y_corte}")
+                    break
+            # Retornamos la imagen original sin cambios
+            return True, y_corte, img
+    except Exception as e:
+        logger.error(f"Error en detector Valparaíso: {e}")
+    # Retornamos la imagen original en caso de fallo
+    return False, 0, img
 
 
 # CORRECCIÓN: Agregar cancel_event
@@ -149,7 +179,7 @@ def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
     # CORRECCIÓN 1: Regex arreglado (sin el pipe '|' al final)
     CODIGOS_INICIO = {
         "valparaiso": r'(1612|I612|l6l2)',
-        "antofagasta": r'(1612|I612)',
+        "antofagasta": r'(1312|I312|l3l2)',
         "concepcion": r'(1612|I612|l6l2|1512)' 
     }
     
@@ -198,6 +228,8 @@ def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
                 # BIFURCACIÓN REGIONAL
                 if region == "concepcion":
                     detectado, y_corte, img_procesada = detectar_1612_concepcion(img, patron_inicio, logger)
+                elif region == "antofagasta":
+                    detectado, y_corte, img_procesada = detectar_1312_antofagasta(img, patron_inicio, logger)
                 else:
                     detectado, y_corte, img_procesada = detectar_1612_valparaiso(img, patron_inicio, logger)
 
