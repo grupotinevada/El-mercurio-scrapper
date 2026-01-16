@@ -5,6 +5,8 @@ import numpy as np
 # Se eliminó matplotlib para evitar errores de hilo al cerrar
 from scipy.signal import savgol_filter, find_peaks
 from logger import get_logger
+logger = get_logger("[paso2 REGIONAL]", log_dir="logs", log_file="paso2_regional.log")
+
 import sys
 
 def resource_path(relative_path):
@@ -31,7 +33,7 @@ def procesar_remates_valpo(cancel_event, entrada_datos, region):
     """
     Función principal llamada por main.py.
     """
-    logger = get_logger("paso2_valpo", log_dir="logs", log_file="paso2_valpo.log")
+
     logger.info(f"✂️ Iniciando Paso 2 ({region.upper()}) - SEPARACIÓN DE COLUMNAS")
 
     imagenes = []

@@ -5,6 +5,7 @@ import numpy as np
 from google.cloud import vision
 from PIL import Image
 from logger import get_logger
+logger = get_logger("[paso3 REGIONAL]", log_dir="logs", log_file="paso3_regional.log")
 from dotenv import load_dotenv
 import re
 

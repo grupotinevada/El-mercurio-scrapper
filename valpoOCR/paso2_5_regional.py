@@ -4,6 +4,7 @@ import pytesseract
 import re
 import sys
 from logger import get_logger
+logger = get_logger("[paso2_5 REGIONAL]", log_dir="logs", log_file="paso2_5_regional.log")
 
 # --- CONFIGURACIÓN TESSERACT ---
 def resource_path(relative_path):
@@ -134,7 +135,7 @@ def detectar_1612_concepcion(img, patron_inicio, logger): #VOLVEMOS AL INICIO PO
 # CORRECCIÓN: Agregar cancel_event
 # CORRECCIÓN: Agregar cancel_event
 def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
-    logger = get_logger("paso2_5_valpo", log_dir="logs", log_file="paso2_5_valpo.log")
+
     logger.info(f"🕵️ Iniciando Paso 2.5: Filtrado Regional ({region.upper()})")
     
     reiniciar_estado() # Limpia variables de control

@@ -3,7 +3,7 @@ import paso2_copy
 import paso3_copy
 import sys
 import os
-from valpoOCR import paso1_valpo, paso2_valpo, paso3_valpo, paso2_5_valpo
+from valpoOCR import paso1_regional, paso2_5_regional, paso2_regional, paso3_regional
 import uuid
 from datetime import datetime
 from logger import get_logger
@@ -110,7 +110,7 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     progress_callback(5, f'Etapa 1: Descargando páginas ({region})...')
     
     # CORRECCIÓN: Pasar cancel_event
-    lista_imagenes, ruta_txt_debug = paso1_valpo.run_extractor_ocr(url, paginas, region, cancel_event)
+    lista_imagenes, ruta_txt_debug = paso1_regional.run_extractor_ocr(url, paginas, region, cancel_event)
     
     if cancel_event.is_set(): return None, None
     if not lista_imagenes:
@@ -121,7 +121,7 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     progress_callback(20, f'Etapa 2: Separando columnas ({region})...')
     
     # CORRECCIÓN: procesar_remates_valpo ya recibía cancel_event, pero aseguramos que lo use bien internamente
-    diccionario_cols = paso2_valpo.procesar_remates_valpo(cancel_event, lista_imagenes, region)
+    diccionario_cols = paso2_regional.procesar_remates_valpo(cancel_event, lista_imagenes, region)
     
     if cancel_event.is_set(): return None, None
     if not diccionario_cols:
@@ -132,7 +132,7 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     progress_callback(30, 'Etapa 2.5: Filtrando sección Remates...')
     
     # CORRECCIÓN: Pasar cancel_event
-    diccionario_cols_limpio = paso2_5_valpo.ejecutar_filtrado(diccionario_cols, region, cancel_event)
+    diccionario_cols_limpio = paso2_5_regional.ejecutar_filtrado(diccionario_cols, region, cancel_event)
     
     if cancel_event.is_set(): return None, None
     if not diccionario_cols_limpio:
@@ -144,7 +144,7 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     
     # CORRECCIÓN: Pasar cancel_event
     logger.info(f"OCR REGION: {region}")
-    ruta_txt_ocr = paso3_valpo.orquestador_ocr_valpo(diccionario_cols_limpio, cancel_event, region)
+    ruta_txt_ocr = paso3_regional.orquestador_ocr_valpo(diccionario_cols_limpio, cancel_event, region)
     
     if cancel_event.is_set(): return None, None
     

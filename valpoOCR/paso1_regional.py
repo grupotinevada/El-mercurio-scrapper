@@ -19,7 +19,7 @@ from logger import get_logger, log_section, dbg
 # --- CONTROLADOR PRINCIPAL ---
 # CORRECCIÓN: Se agrega cancel_event
 def run_extractor_ocr(url: str, paginas: int, region: str, cancel_event):
-    logger = get_logger("paso1_valpo", log_dir="logs", log_file="paso1_valpo.log")
+    logger = get_logger("[paso1 REGIONAL]", log_dir="logs", log_file="paso1_regional.log")
     logger.info(f"🌊 Iniciando Extractor {region.upper()} (Modo OCR)...")
 
     load_dotenv()
