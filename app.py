@@ -64,6 +64,7 @@ class Api:
         self.DIR_MACAL = "propiedades_macal"
         self.DIR_HP_OUTPUT = "reporte_final_housepricing.json"
         self.DIR_HP_INPUT = "./input_pdfs"
+        self.DIR_HP = "./house_pricing_outputs"
 
     def set_window(self, window):
         """Asigna la instancia de la ventana de pywebview a la API."""

@@ -1,3 +1,8 @@
+############################################################################################################################
+#  El paso 3 es el que convierte el JSON con la dta del informe y la data de los comparables en un archivo Excel estructurado con hojas
+#  Extrae todos la data del JSON y la organiza en 4 hojas
+############################################################################################################################
+
 import pandas as pd
 import os
 from logger import get_logger
@@ -62,7 +67,7 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
             # Características Globales
             "Tipo Propiedad": carac.get("Tipo"),
             "Destino": carac.get("Destino"),
-            "M2 Construcción Total": carac.get("M2 Construcción"),
+            "M2 Util": carac.get("M2 Construcción"),
             "M2 Terreno": carac.get("M2 Terreno"),
             
             # Avalúo
@@ -129,9 +134,10 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
         if isinstance(comps, list) and num_comps > 0:
             for comp in comps:
                 if cancel_event.is_set(): return False
-                
+                logger.info(f"Procesando comparable >> Excel {comp.get('rol')} para {info_gral.get('rol')}")
                 data_comps.append({
                     "ID Interno (FK)": uid,
+                    "Fuente": comp.get("fuente"),
                     "Rol Origen": info_gral.get("rol"),
                     "Comuna": info_gral.get("comuna"),
                     
@@ -149,7 +155,9 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
                     "Distancia (mts)": comp.get("distancia_metros"),
                     
                     # ## NUEVO: Columna con el link de Google Maps
-                    "Link Mapa": comp.get("link_maps", "")
+                    "Link Mapa": comp.get("link_maps", ""),
+                    "Link Publicacion": comp.get("link_publicacion", "")
+
                 })
 
     # --- CREACIÓN DE DATAFRAMES ---

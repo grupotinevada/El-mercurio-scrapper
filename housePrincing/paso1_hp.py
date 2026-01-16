@@ -1,3 +1,10 @@
+############################################################################################################################
+#  El paso 1 es el que extrae la infromación del pdf (Informa de antecedentes) 
+#  Extrae todos la data del pdf y la guarda en un json 
+############################################################################################################################
+
+
+
 import io
 import re
 import uuid
@@ -74,13 +81,43 @@ def parse_house_pricing_text(full_text: str) -> Dict[str, Any]:
                 if val:
                     data["informacion_general"]["propietario"] = val
         
-        # Dirección
-        if "Informe de antecedentes" in line:
-            if i + 1 < len(lines):
-                 candidate = lines[i+1].strip()
-                 if re.search(r'\d', candidate) and len(candidate) > 5:
-                     data["informacion_general"]["direccion"] = candidate
+        #Dirección
+        # Esto te mostrará en la consola qué líneas tienen la palabra "antecedentes"
+        if "antecedentes" in line.lower():
+            logger.debug(f"DEBUG CAMPO ENCONTRADO: '{line}'")
+        # -----------------------------------------------------
 
+        # Dirección (CORREGIDO: Búsqueda flexible + Case Insensitive)
+        # Usamos .lower() para ignorar mayúsculas y buscamos palabras clave por separado
+        if "informe" in line.lower() and "antecedentes" in line.lower():
+            
+            logger.debug(">>> ENTRO AL IF DE DIRECCION") # Confirmación visual
+
+            # Buscamos en las siguientes 6 líneas
+            for offset in range(1, 10): # Empezar en 1 para no leer el título
+                if i + offset >= len(lines):
+                    break
+                
+                candidate = lines[i+offset].strip()
+                
+               # logger.warning(f"Evaluando candidato: '{candidate}'") # Ver qué está evaluando
+
+                # 1. Si la línea está vacía, saltar
+                if not candidate:
+                    continue
+                
+                # 2. Safety check
+                if any(kw in candidate for kw in ["Comuna", "Rol", "Propietario"]):
+                    logger.debug("Se encontró keyword de freno, parando búsqueda.")
+                    break
+
+                # 3. Validación
+                # Relajamos la validación: Longitud > 5 y TIENE NUMEROS
+                if len(candidate) > 5 and re.search(r'\d', candidate):
+                    data["informacion_general"]["direccion"] = candidate
+                    logger.debug(f"✅ Dirección GUARDADA: {candidate}")
+                    break
+                    
         # Roles CBR (Lógica inteligente de búsqueda)
         if "Roles inscritos en CBR" in line:
             rol_line_index = -1
@@ -274,6 +311,8 @@ def procesar_lote_pdfs(carpeta_entrada: str, cancel_event) -> List[Dict[str, Any
             # --- INVOCACIÓN CORE ---
             datos_extraidos = parse_house_pricing_text(full_text)
             
+            # logger.warning(f"Datos extraidos: {datos_extraidos}")
+
             # Agregar metadatos del archivo para trazabilidad
             datos_extraidos["meta_archivo"] = {
                 "nombre": archivo,
