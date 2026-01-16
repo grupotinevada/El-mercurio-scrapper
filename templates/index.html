@@ -534,14 +534,17 @@
     }
 
     function volverAlHub() {
-      // 1. Ocultar vistas
+      // 1. Limpiar todo antes de salir
+      limpiarFormularios();
+
+      // 2. Ocultar vistas
       document.querySelectorAll('.view-container').forEach(el => el.style.display = 'none');
 
-      // 2. Mostrar Hub
-      hubView.style.display = 'grid'; // Grid layout para el hub
+      // 3. Mostrar Hub
+      hubView.style.display = 'grid';
 
-      // 3. Resetear Header
-      headerTitle.innerText = "Automation Hub";
+      // 4. Resetear Header
+      headerTitle.innerText = "Extractor Roberto"; // O "Automation Hub" como tenías antes
       headerSubtitle.innerText = "Selecciona una herramienta para comenzar";
       backBtn.classList.add('d-none');
     }
@@ -592,6 +595,10 @@
           actualizarMensajeUI(response.message, 'error');
           ocultarProgreso();
           document.getElementById('submitBtn').disabled = false;
+          setTimeout(() => {
+            limpiarFormularios();
+            habilitarUI(); // Reactivar botón
+          }, 2000);
         }
       } catch (e) {
         actualizarMensajeUI('Error de comunicación con el backend.', 'error');
@@ -676,6 +683,10 @@
       actualizarMacalStatus(msg, tipo);
       document.getElementById('macalBtn').disabled = false;
       ocultarProgreso();
+      setTimeout(() => {
+        limpiarFormularios();
+        document.getElementById('macalBtn').disabled = false;
+      }, 2000);
     }
 
     async function abrirResultadosMacal() {
@@ -741,6 +752,10 @@
     function finalizarProcesoHP() {
       document.getElementById('hpBtn').disabled = false;
       ocultarProgreso();
+      setTimeout(() => {
+        limpiarFormularios(); // Esto resetea el contador de archivos a "Ninguno"
+        document.getElementById('hpBtn').disabled = false; // Vuelve a habilitar (pero estará disabled por limpiarFormularios hasta que seleccione nuevos)
+      }, 2000);
     }
 
     async function abrirResultadosHP() {
@@ -758,7 +773,39 @@
       const btn = document.getElementById('submitBtn');
       if (btn) btn.disabled = false;
     }
+    // --- LÓGICA DE LIMPIEZA ---
+    async function limpiarFormularios() {
+      // 1. Limpiar El Mercurio
+      document.getElementById('url').value = '';
+      document.getElementById('paginas').value = '';
+      document.getElementById('columnas').value = '7'; // Valor por defecto
+      document.getElementById('columnas').disabled = false;
+      document.getElementById('status').textContent = '';
+      document.getElementById('status').className = 'mt-3 text-center small fw-medium text-secondary';
 
+      // 2. Limpiar Macal
+      document.getElementById('macal-status').textContent = '';
+      document.getElementById('macal-status').className = 'mt-3 text-center small fw-medium text-secondary';
+
+      // 3. Limpiar House Pricing (HP)
+      const hpLabel = document.getElementById('hp-file-count');
+      hpLabel.textContent = 'Ningún archivo seleccionado';
+      hpLabel.className = 'text-primary fw-bold';
+      document.getElementById('hpBtn').disabled = true;
+      document.getElementById('hp-status').textContent = '';
+      document.getElementById('hp-status').className = 'mt-3 text-center small fw-medium text-secondary';
+
+      // 4. IMPORTANTE: Avisar al Backend que limpie su memoria (variables de clase, listas de archivos, etc.)
+      // Si tu backend guarda los archivos seleccionados en una lista self.archivos, 
+      // deberías tener un método en Python para vaciarla.
+      try {
+        if (window.pywebview && window.pywebview.api.limpiar_cache_backend) {
+          await window.pywebview.api.limpiar_cache_backend();
+        }
+      } catch (e) {
+        console.log("No se detectó función de limpieza en backend o no es necesaria.");
+      }
+    }
 
 
 
