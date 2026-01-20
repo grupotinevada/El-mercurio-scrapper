@@ -73,10 +73,13 @@ def procesar_remates_valpo(cancel_event, entrada_datos, region):
             
             # --- SELECTOR DE PIPELINE ---
             if region_key == "antofagasta":
-                # Lógica nueva con eliminación de leyenda y manejo de conflictos
+                # Lógica para Antofagasta
                 recortes_generados = _pipeline_antofagasta(ruta_img, output_folder, logger, cancel_event)
+            elif region_key == "concepcion":
+                # Lógica nueva integrada para Concepción (Pipeline con 3 pasos de seguridad + Footer)
+                recortes_generados = _pipeline_concepcion(ruta_img, output_folder, logger, cancel_event)
             else:
-                # Lógica original (Valparaíso / Concepción)
+                # Lógica original (Valparaíso / Default)
                 recortes_generados = _pipeline_valparaiso(ruta_img, output_folder, logger, cancel_event)
             
             # Si retorna None es porque se canceló dentro del pipeline
@@ -102,7 +105,7 @@ def procesar_remates_valpo(cancel_event, entrada_datos, region):
 def eliminar_leyenda_header(imagen_bgr):
     """
     Detecta la franja de encabezado (negra) y BORRA TAMBIÉN los números superiores.
-    Específico para Antofagasta.
+    Específico para Antofagasta y Concepción.
     """
     img_out = imagen_bgr.copy()
     gray = cv2.cvtColor(img_out, cv2.COLOR_BGR2GRAY)
@@ -146,6 +149,71 @@ def eliminar_leyenda_header(imagen_bgr):
                 # Dibujamos el rectángulo blanco desde más arriba
                 cv2.rectangle(img_out, (x, y_nuevo), (x+w, y+h), (255, 255, 255), -1)
                 
+    return img_out
+
+def eliminar_footer_inferior(imagen_bgr):
+    """
+    NUEVA FUNCIÓN: Detecta si en el 15% inferior de la imagen hay publicidad
+    tipo 'Contacto', 'Ventas', 'Digital', etc. y la borra.
+    """
+    img_out = imagen_bgr.copy()
+    h, w = img_out.shape[:2]
+    
+    # 1. Definir zona de busqueda (último 15% de la imagen)
+    # Si la imagen es muy pequeña, revisamos un poco más (20%)
+    porcentaje = 0.20 if h < 500 else 0.15
+    y_inicio = int(h * (1 - porcentaje))
+    roi = img_out[y_inicio:h, 0:w]
+    
+    if roi.size == 0: return img_out
+
+    # 2. OCR inteligente en esa zona
+    # Convertimos a gris
+    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    
+    # IMPORTANTE: Los footers suelen ser fondos oscuros con letras claras (Blanco sobre Rojo).
+    # Tesseract lee mejor letras negras sobre blanco.
+    # Intentamos leer de dos formas: Normal e Invertido.
+    
+    keywords_footer = ["CONTACTO", "VENTAS", "DIARIOELSUR", "FONO", "+569", "@", "DIGITAL", "FM", "ESCÚCHANOS", "MAIL"]
+    found = False
+    min_y_detected = h # Inicializamos al fondo
+    
+    # --- Check 1: Threshold Invertido (Para letras blancas sobre fondo rojo/negro) ---
+    _, binary_inv = cv2.threshold(gray_roi, 150, 255, cv2.THRESH_BINARY_INV)
+    data = pytesseract.image_to_data(binary_inv, output_type=pytesseract.Output.DICT, config='--psm 6')
+    
+    n_boxes = len(data['text'])
+    for i in range(n_boxes):
+        text = data['text'][i].upper()
+        conf = int(data['conf'][i])
+        if conf > 30 and any(k in text for k in keywords_footer):
+            found = True
+            y_box_roi = data['top'][i]
+            y_global = y_inicio + y_box_roi
+            if y_global < min_y_detected:
+                min_y_detected = y_global
+
+    # --- Check 2: Threshold Normal (Por si el footer es fondo blanco letras negras) ---
+    if not found:
+        _, binary_norm = cv2.threshold(gray_roi, 180, 255, cv2.THRESH_BINARY)
+        data = pytesseract.image_to_data(binary_norm, output_type=pytesseract.Output.DICT, config='--psm 6')
+        n_boxes = len(data['text'])
+        for i in range(n_boxes):
+            text = data['text'][i].upper()
+            conf = int(data['conf'][i])
+            if conf > 30 and any(k in text for k in keywords_footer):
+                found = True
+                y_box_roi = data['top'][i]
+                y_global = y_inicio + y_box_roi
+                if y_global < min_y_detected:
+                    min_y_detected = y_global
+
+    if found:
+        # Footer publicitario detectado (Ventas/Contacto). Eliminando...
+        margin = 5
+        cv2.rectangle(img_out, (0, max(0, min_y_detected - margin)), (w, h), (255, 255, 255), -1)
+
     return img_out
 
 def reforzar_divisorias_tenues(binary_img, proyeccion, umbral_alto, r_sensibilidad):
@@ -215,7 +283,7 @@ def fase1_segmentar_columnas_completo(img_limpia, p_ocr, h_factor, h_gap, r_acti
 
 
 # ==========================================
-# PIPELINE ORIGINAL (VALPARAÍSO / CONCEPCIÓN)
+# PIPELINE ORIGINAL (VALPARAÍSO)
 # ==========================================
 
 def _pipeline_valparaiso(ruta_img, output_folder, logger, cancel_event):
@@ -412,6 +480,158 @@ def _pipeline_antofagasta(ruta_img, output_folder, logger, cancel_event):
         if len(cols) > 0:
             for i_col, col_img in enumerate(cols):
                 col_filename = f"{base_name}_ant_blk{i_blk}_col{i_col}.jpg"
+                col_path = os.path.join(output_folder, col_filename)
+                cv2.imwrite(col_path, col_img)
+                rutas_columnas_guardadas.append(col_path)
+
+    return rutas_columnas_guardadas
+
+
+# ==========================================
+# PIPELINE NUEVO (CONCEPCIÓN - 3 Pasos de Seguridad)
+# ==========================================
+
+def _pipeline_concepcion(ruta_img, output_folder, logger, cancel_event):
+    """
+    Pipeline integrado para Concepción:
+    Aplica lógica de 3 pasos de seguridad: 
+    1. Preparación y máscara.
+    2. Tapar conflictos y no rescatados en imagen filtrada.
+    3. Traspaso de bloques seguros a lienzo limpio y segmentación.
+    4. Elimina footer publicitario al final.
+    """
+    # Params actualizados según tu solicitud
+    p_borrado = 10
+    p_ocr = 3
+    h_factor = 0.7  # Umbral subido
+    h_gap = 30
+    r_activar = True
+    r_sens = 0.15   # Sensibilidad ajustada
+
+    keywords_positivas = ["REMATE", "JUZGADO", "EXTRACTO", "JUDICIAL", "PRIMER", "SEGUNDO", "TERCER"]
+    # === ACTUALIZACIÓN: Keywords negativas ampliadas para filtrar anuncios completos ===
+    keywords_negativas = ["NECROLOGICOS", "FUNEBRES", "CONDOLENCIAS", "DEFUNCIONES", "IN MEMORIAM", 
+                          "CONTACTO", "VENTAS", "DIGITAL", "FM", "ESCÚCHANOS", "MAIL", "FONO"]
+
+    img = cv2.imread(ruta_img)
+    if img is None:
+        logger.error(f"Ruta inválida: {ruta_img}")
+        return []
+
+    # === PASO 1: PREPARACIÓN ===
+    # Creamos 'img_filtrada' que es una COPIA de la original. Aquí borraremos lo malo.
+    img_filtrada = img.copy()
+
+    # Creamos 'img_salida' que es todo BLANCO. Aquí pegaremos lo bueno.
+    img_salida = np.full_like(img, 255)
+
+    # Detección inicial
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    kernel_grueso = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 12))
+    dilated = cv2.dilate(binary, kernel_grueso, iterations=2)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    bloques_validos_coords = [] # Guardaremos coordenadas para el paso 3
+    area_detectada = False
+
+    logger.debug(f"Analizando Concepción: {os.path.basename(ruta_img)} | Bloques: {len(contours)}")
+
+    # === PASO 2: TAPAR CON BLANCO LO NO RESCATADO (EN 'img_filtrada') ===
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if w < 250 or h < 250:
+            # Es ruido/muy chico -> LO TAPAMOS
+            cv2.rectangle(img_filtrada, (x, y), (x+w, y+h), (255, 255, 255), -1)
+            continue
+
+        roi = gray[y:y+h, x:x+w]
+        try:
+            texto_val = pytesseract.image_to_string(roi, config='--psm 3').upper()
+        except Exception:
+            texto_val = ""
+
+        found_pos = [k for k in keywords_positivas if k in texto_val]
+        found_neg = [k for k in keywords_negativas if k in texto_val]
+
+        # --- ANÁLISIS ---
+        if found_pos and found_neg:
+            # CONFLICTO: Hay que entrar a operar
+            logger.debug(f"  [!] Conflicto en ({x},{y}). Filtrando...")
+            roi_bin = binary[y:y+h, x:x+w]
+            kernel_bisturi = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
+            roi_dilated = cv2.dilate(roi_bin, kernel_bisturi, iterations=2)
+            sub_contours, _ = cv2.findContours(roi_dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for sub_c in sub_contours:
+                sx, sy, sw, sh = cv2.boundingRect(sub_c)
+                gx, gy = x + sx, y + sy # Coordenadas globales
+
+                # Checkear sub-bloque
+                sub_roi = gray[gy:gy+sh, gx:gx+sw]
+                try:
+                    sub_texto = pytesseract.image_to_string(sub_roi, config='--psm 3').upper()
+                except:
+                    sub_texto = ""
+                sub_found_pos = [k for k in keywords_positivas if k in sub_texto]
+
+                if sub_found_pos:
+                    # ES PARTE BUENA: NO LA TOCAMOS EN img_filtrada
+                    # Guardamos coords para el paso 3
+                    bloques_validos_coords.append((gx, gy, sw, sh))
+                    area_detectada = True
+                else:
+                    # ES PARTE MALA (dentro del conflicto): LA TAPAMOS CON BLANCO
+                    cv2.rectangle(img_filtrada, (gx, gy), (gx+sw, gy+sh), (255, 255, 255), -1)
+
+        elif found_pos and not found_neg:
+            # ES BLOQUE BUENO PURO: NO LO TOCAMOS
+            bloques_validos_coords.append((x, y, w, h))
+            area_detectada = True
+
+        else:
+            # ES BLOQUE MALO O NEUTRO: LO TAPAMOS CON BLANCO
+            cv2.rectangle(img_filtrada, (x, y), (x+w, y+h), (255, 255, 255), -1)
+
+    # === PASO 3: TRASPASAR LO RESCATADO A LA IMAGEN BLANCA ===
+    if not area_detectada:
+        logger.debug("No se encontraron bloques válidos (Pipeline Concepción).")
+        return []
+
+    logger.info(f"   >>> Traspasando {len(bloques_validos_coords)} bloques seguros al lienzo final...")
+
+    for (x, y, w, h) in bloques_validos_coords:
+        # Copiamos desde la imagen YA FILTRADA.
+        img_salida[y:y+h, x:x+w] = img_filtrada[y:y+h, x:x+w]
+
+    # Procesamiento final de columnas (Desde img_salida, que es la más pura)
+    rutas_columnas_guardadas = []
+    base_name = os.path.splitext(os.path.basename(ruta_img))[0]
+
+    # Ordenamos para asegurar orden de lectura (arriba a abajo)
+    bloques_validos_coords = sorted(bloques_validos_coords, key=lambda b: b[1])
+
+    for i_blk, (x, y, w, h) in enumerate(bloques_validos_coords):
+        if cancel_event.is_set(): 
+            return None
+
+        bloque_final = img_salida[y:y+h, x:x+w]
+        
+        # 1. Aplicamos la eliminación de header que ya existía
+        bloque_final = eliminar_leyenda_header(bloque_final)
+        
+        # 2. === NUEVO: Eliminamos el footer publicitario ===
+        bloque_final = eliminar_footer_inferior(bloque_final)
+        
+        # 3. Limpieza interna
+        limpio = fase2_limpieza_previa(bloque_final, p_borrado)
+        
+        # 4. Segmentación
+        cols, _, _, _, _ = fase1_segmentar_columnas_completo(limpio, p_ocr, h_factor, h_gap, r_activar, r_sens)
+        
+        if len(cols) > 0:
+            for i_col, col_img in enumerate(cols):
+                col_filename = f"{base_name}_conc_blk{i_blk}_col{i_col}.jpg"
                 col_path = os.path.join(output_folder, col_filename)
                 cv2.imwrite(col_path, col_img)
                 rutas_columnas_guardadas.append(col_path)
