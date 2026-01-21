@@ -11,7 +11,7 @@
   <style>
     /* --- FLUENT DESIGN SYSTEM TOKENS --- */
     :root {
-      --fluent-bg: radial-gradient(circle at top left, #ffffff 60%, #cccccc 100%);
+      --fluent-bg: radial-gradient(circle at top left, #ffffff 60%, #f0efef 100%);
       --fluent-surface: #ffffff;
       --fluent-border: #e5e5e5;
       --fluent-text-primary: #1b1b1b;
@@ -555,7 +555,7 @@
 
     urlInput.addEventListener('input', function () {
       const val = this.value.toLowerCase();
-      if (val.includes('mercuriovalpo.cl' ) || val.includes('mercurioantofagasta.cl') || val.includes('elsur.cl')) {
+      if (val.includes('mercuriovalpo.cl') || val.includes('mercurioantofagasta.cl') || val.includes('elsur.cl')) {
         colInput.value = 7;
         colInput.disabled = true;
       } else {

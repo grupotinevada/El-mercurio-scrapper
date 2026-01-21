@@ -127,6 +127,17 @@ def update_excel_with_new_properties(output_filename: str, new_data: list, id_fi
         logger.info("No hay nuevas propiedades para agregar.")
         return None
 
+    # --- CORRECCIÓN: Crear directorio si no existe ---
+    directory = os.path.dirname(output_filename)
+    if directory and not os.path.exists(directory):
+        try:
+            os.makedirs(directory)
+            logger.info(f"Directorio creado: {directory}")
+        except OSError as e:
+            logger.error(f"Error al crear el directorio {directory}: {e}")
+            return None
+    # -------------------------------------------------
+
     df_new = pd.DataFrame(new_data)
 
     if not os.path.exists(output_filename):
@@ -165,7 +176,7 @@ def update_excel_with_new_properties(output_filename: str, new_data: list, id_fi
 
 # --- Función principal ---
 # CORRECCIÓN: Se agrega cancel_event como argumento
-def run_extractor_macal(search_url: str, details_url: str, output_filename: str, cancel_event, progress_callback=None):
+def run_extractor_macal(search_url: str, details_url: str, output_folder: str, cancel_event, progress_callback=None):
     start_time = time.perf_counter()
     session = requests.Session()
     all_property_ids = []
@@ -186,8 +197,6 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         logger.info(f"Se encontraron {total_entries} propiedades en {total_pages} páginas.")
 
         for page in range(1, total_pages + 1):
-            
-            # Check cancelación
             if cancel_event.is_set():
                 logger.info("🛑 Proceso cancelado por usuario.")
                 return
@@ -221,14 +230,12 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
     if total_ids == 0:
         if progress_callback:
             progress_callback(100, "No se encontraron propiedades para procesar.")
-            end_time = time.perf_counter()
-            logger.warning("No se encontraron propiedades para procesar.")
-            logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
+        end_time = time.perf_counter()
+        logger.warning("No se encontraron propiedades para procesar.")
+        logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
         return pd.DataFrame()
     
     for i, prop_id in enumerate(all_property_ids):
-        
-        # Check cancelación
         if cancel_event.is_set():
             logger.info("🛑 Proceso cancelado por usuario.")
             return
@@ -252,9 +259,7 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
                     formatted_date = date_obj.strftime("%d/%m/%Y")
                 except ValueError:
                     formatted_date = raw_auction_date.split('T')[0]
-                    logger.warning(f"Formato de fecha inesperado para la propiedad ID {prop_id}: {raw_auction_date}. Usando valor crudo.")
-                    end_time = time.perf_counter()
-                    logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
+                    logger.warning(f"Formato de fecha inesperado para la propiedad ID {prop_id}: {raw_auction_date}.")
 
             price_info = details.get("property_price", {})
             property_info = {
@@ -287,14 +292,10 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         except Exception as e:
             logger.error(f"Error al obtener detalles para la propiedad ID {prop_id}: {e}")
             failed_ids.append(prop_id) 
-            end_time = time.perf_counter()
-            logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
             continue
 
     if not extracted_data:
         logger.warning("El proceso finalizó sin datos nuevos para procesar.")
-        end_time = time.perf_counter()
-        logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
         return None
 
     df = pd.DataFrame(extracted_data)
@@ -312,8 +313,22 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         
         df = df[final_columns_ordered + remaining_columns]
 
-        update_excel_with_new_properties(output_filename, df.to_dict(orient="records"))
-        logger.info(f"Archivo guardado: '{output_filename}'")
+        # --- CAMBIO: Generar nombre de archivo con fecha y hora ---
+        # Si output_folder viene vacía, usa la carpeta actual
+        if not output_folder:
+            output_folder = "."
+        
+        # Crear carpeta si no existe
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        filename = f"propiedades_macal_{timestamp}.xlsx"
+        full_path = os.path.join(output_folder, filename)
+
+        df.to_excel(full_path, index=False, engine='openpyxl')
+        logger.info(f"Archivo guardado exitosamente: '{full_path}'")
+        # ----------------------------------------------------------
         
     except Exception as e:
         logger.error(f"Error al guardar el archivo Excel: {e}")
@@ -322,7 +337,6 @@ def run_extractor_macal(search_url: str, details_url: str, output_filename: str,
         logger.info(f"Tiempo total transcurrido: {(end_time - start_time)/60:.2f} minutos.")
         if failed_ids:
             logger.warning(f"Proceso completado con {len(failed_ids)} propiedades fallidas.")
-            logger.warning(f"Lista de IDs fallidos: {failed_ids}")
         else:
             logger.info("Proceso completado exitosamente sin propiedades fallidas.")
     return df
