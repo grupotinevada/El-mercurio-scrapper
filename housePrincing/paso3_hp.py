@@ -1,6 +1,6 @@
 ############################################################################################################################
-#  El paso 3 es el que convierte el JSON con la dta del informe y la data de los comparables en un archivo Excel estructurado con hojas
-#  Extrae todos la data del JSON y la organiza en 4 hojas
+#  El paso 3 es el que convierte el JSON con la data del informe y la data de los comparables en un archivo Excel estructurado con hojas
+#  Extrae todos la data del JSON y la organiza en 4 hojas, incluyendo los Links a TGR en la hoja legal.
 ############################################################################################################################
 
 import pandas as pd
@@ -12,18 +12,18 @@ logger = get_logger("paso3_excel", log_dir="logs", log_file="paso3_excel.log")
 
 def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"):
     """
-    Genera un Excel Relacional con 4 pestañas para representar la totalidad de los datos:
-    1. 'Resumen General': Datos maestros de la propiedad (1 fila por propiedad).
-    2. 'Detalle Construcciones': Desglose de cada línea de construcción.
-    3. 'Roles y Deudas': Roles inscritos en CBR y Deudas TGR.
-    4. 'Comparables Mercado': Data completa de House Pricing + Links Maps.
+    Genera un Excel Relacional con 4 pestañas:
+    1. 'Resumen General': Datos maestros.
+    2. 'Detalle Construcciones': Desglose de construcción.
+    3. 'Roles y Deudas': Resumen legal (CBR y Deudas TGR con LINK al certificado).
+    4. 'Comparables Mercado': Data completa de House Pricing.
     """
     logger.info(f"Iniciando generación de Excel completo para {len(lista_datos)} propiedades...")
 
-    # Listas para las 4 hojas
+    # Listas para las hojas
     data_main = []
     data_constr = []
-    data_legal = [] # Roles CBR y Deudas
+    data_legal = [] # Unificamos CBR y Deudas con Link
     data_comps = []
 
     for item in lista_datos:
@@ -41,7 +41,6 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
         hp_data = item.get("house_pricing", {})
         
         # --- 1. HOJA PRINCIPAL (RESUMEN) ---
-        # Aplanamos listas simples como compradores/vendedores
         compradores_str = ", ".join(transaccion.get("compradores", []))
         vendedores_str = ", ".join(transaccion.get("vendedores", []))
 
@@ -49,7 +48,7 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
         comps = hp_data.get("comparables", [])
         estado_hp = "Con Resultados"
         if isinstance(comps, str):
-            estado_hp = comps # Mensaje de error
+            estado_hp = comps 
             num_comps = 0
         else:
             num_comps = len(comps)
@@ -109,39 +108,43 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
                 "Destino": c.get("destino")
             })
 
-        # --- 3. HOJA LEGAL (Roles Asociados y Deudas) ---
-        # Roles CBR
+        # --- 3. HOJA LEGAL (ROLES CBR Y DEUDAS TGR) ---
+        
+        # A. Roles CBR (Sin link, solo info)
         for r_cbr in item.get("roles_cbr", []):
             data_legal.append({
                 "ID Interno (FK)": uid,
                 "Rol Propiedad": info_gral.get("rol"),
                 "Categoría": "Inscripción CBR",
                 "Rol Referencia": r_cbr.get("rol"),
-                "Detalle / Monto": r_cbr.get("tipo")
+                "Detalle / Monto": r_cbr.get("tipo"),
+                "Link Certificado / Obs": "-"
             })
         
-        # Deudas
+        # B. Deudas TGR (Con Link extraído en Paso 1)
         for deuda in item.get("deudas", []):
+            link = deuda.get("link_tgr", "")
+            if not link:
+                link = "No detectado"
+                
             data_legal.append({
                 "ID Interno (FK)": uid,
                 "Rol Propiedad": info_gral.get("rol"),
                 "Categoría": "Deuda TGR",
                 "Rol Referencia": deuda.get("rol"),
-                "Detalle / Monto": deuda.get("monto") # Aquí va el dinero
+                "Detalle / Monto": deuda.get("monto"),
+                "Link informe de deuda TGR": link
             })
 
-        # --- 4. HOJA COMPARABLES (House Pricing Completo) ---
+        # --- 4. HOJA COMPARABLES ---
         if isinstance(comps, list) and num_comps > 0:
             for comp in comps:
                 if cancel_event.is_set(): return False
-                logger.info(f"Procesando comparable >> Excel {comp.get('rol')} para {info_gral.get('rol')}")
                 data_comps.append({
                     "ID Interno (FK)": uid,
                     "Fuente": comp.get("fuente"),
                     "Rol Origen": info_gral.get("rol"),
                     "Comuna": info_gral.get("comuna"),
-                    
-                    # Datos del Comparable
                     "Rol Comparable": comp.get("rol"),
                     "Dirección": comp.get("direccion"),
                     "Precio UF": comp.get("precio_uf"),
@@ -153,11 +156,8 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
                     "Dormitorios": comp.get("dormitorios"),
                     "Baños": comp.get("banios"),
                     "Distancia (mts)": comp.get("distancia_metros"),
-                    
-                    # ## NUEVO: Columna con el link de Google Maps
                     "Link Mapa": comp.get("link_maps", ""),
                     "Link Publicacion": comp.get("link_publicacion", "")
-
                 })
 
     # --- CREACIÓN DE DATAFRAMES ---
@@ -169,24 +169,22 @@ def generar_excel(lista_datos, cancel_event, nombre_archivo="reporte_final.xlsx"
     try:
         with pd.ExcelWriter(nombre_archivo, engine='openpyxl') as writer:
             
-            # Hoja 1: Resumen
+            # 1. Resumen
             if not df_main.empty:
                 df_main.to_excel(writer, sheet_name="Resumen General", index=False)
                 _ajustar_columnas(writer, "Resumen General", df_main, cancel_event)
             
-            # Hoja 2: Comparables (La más importante después del resumen)
+            # 2. Comparables
             if not df_comps.empty:
                 df_comps.to_excel(writer, sheet_name="Comparables Mercado", index=False)
                 _ajustar_columnas(writer, "Comparables Mercado", df_comps, cancel_event)
-            else:
-                logger.warning("No hay comparables para la hoja 'Comparables Mercado'.")
 
-            # Hoja 3: Construcciones
+            # 3. Construcciones
             if not df_constr.empty:
                 df_constr.to_excel(writer, sheet_name="Detalle Construcciones", index=False)
                 _ajustar_columnas(writer, "Detalle Construcciones", df_constr, cancel_event)
 
-            # Hoja 4: Legal
+            # 4. Legal (Roles y Deudas)
             if not df_legal.empty:
                 df_legal.to_excel(writer, sheet_name="Roles y Deudas", index=False)
                 _ajustar_columnas(writer, "Roles y Deudas", df_legal, cancel_event)
@@ -204,12 +202,22 @@ def _ajustar_columnas(writer, sheet_name, df, cancel_event):
     for idx, col in enumerate(df.columns):
         if cancel_event.is_set(): return
         
-        # Calcular ancho basado en el encabezado y datos
         try:
             max_len_data = df[col].astype(str).map(len).max() if not df[col].empty else 0
             max_len = max(max_len_data, len(str(col))) + 2
-            max_len = min(max_len, 60) # Tope máximo visual
+            max_len = min(max_len, 60)
             
             worksheet.column_dimensions[chr(65 + idx)].width = max_len
         except:
-            pass # Si falla el cálculo de ancho, no romper el proceso
+            pass
+        if "Link" in str(col):
+            col_letter = chr(65 + idx)
+            # Iteramos sobre las celdas de esa columna (empezando desde fila 2 porque 1 es header)
+            for row_idx in range(2, len(df) + 2):
+                cell = worksheet[f"{col_letter}{row_idx}"]
+                val = cell.value
+                
+                # Si el valor empieza con http, lo hacemos clickable y azul
+                if val and str(val).startswith("http"):
+                    cell.hyperlink = val
+                    cell.style = "Hyperlink" # Estilo nativo de Excel (Azul + Subrayado)
