@@ -119,22 +119,12 @@ def extraer_direccion_y_link(raw_name, raw_display_name):   #Funcion auxiliar de
     if not raw_name:
         return "Sin dirección", None
 
-    # CASO OFERTA CON LINK (Ej: Maule)
-    # Si empieza con http o www, asumimos que usaron el campo para una URL
     if raw_name.startswith("http") or "www." in raw_name:
         link = raw_name
-        
-        # Intentamos usar el display-name como dirección
         direccion = raw_display_name
-        
-        # Si display-name también está vacío o es None, usamos el texto por defecto que pediste
         if not direccion:
             direccion = "No hay dato, Ver publicacion"
-            
         return direccion, link
-
-    # CASO NORMAL / COMPRAVENTA (Ej: Puchuncaví)
-    # Si no es link, asumimos que el dato es la dirección real
     else:
         direccion = raw_name
         link = None # No hay link en este campo
@@ -177,9 +167,6 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, tipo_target, rol_t
         # Esperamos a que la página esté "tranquila" antes de buscar
         wait.until(lambda d: d.execute_script("return document.readyState === 'complete'"))
 
-        # -------------------------------------------------------------------------
-        # [MODIFICACIÓN CLAVE] ESTRATEGIA DE CADUCIDAD EN #property_list
-        # -------------------------------------------------------------------------
         
         # 1. Capturar el contenedor "property_list" ACTUAL (el sucio/viejo)
         lista_vieja = None
@@ -226,10 +213,6 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, tipo_target, rol_t
             datos_retorno["mensaje"] = "Error de carga (Timeout)"
             return datos_retorno
 
-        # -------------------------------------------------------------------------
-        # FIN MODIFICACIÓN
-        # -------------------------------------------------------------------------
-
         # --- [EXTRACCIÓN DE CENTROIDE Y DATOS] ---
         # Solo intentamos buscar .hpid si sabemos que hay algo o si falló la lectura del count
         if datos_retorno["mensaje"] == "OK":
@@ -261,8 +244,6 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, tipo_target, rol_t
                 
                 try:
                     # 1. Seleccionar la fuente (Esto TAMBIÉN refresca la lista, ojo)
-                    # Aquí la lógica de espera debería ser similar, pero por simplicidad
-                    # mantendremos tu sleep o una espera simple a .hpid si confías en que hay datos
                     
                     select_elem = wait.until(EC.element_to_be_clickable((By.ID, "fuente")))
                     Select(select_elem).select_by_value(fuente_val)
@@ -313,7 +294,6 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, tipo_target, rol_t
 
 
 # --- FUNCIÓN PRINCIPAL QUE PIDE EL MAIN ---
-# CORRECCIÓN: Agregar cancel_event
 def procesar_lista_propiedades(lista_propiedades, cancel_event):
     """
     Recibe la lista completa del Paso 1 (JSON), abre UNA sola sesión de navegador,
@@ -322,7 +302,7 @@ def procesar_lista_propiedades(lista_propiedades, cancel_event):
     logger.info(f"Iniciando sesión Selenium para procesar {len(lista_propiedades)} propiedades...")
     
     options = Options()
-    # options.add_argument("--headless=new") 
+    options.add_argument("--headless=new") 
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--window-size=1920,1080")
     
