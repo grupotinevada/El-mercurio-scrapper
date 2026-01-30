@@ -58,13 +58,35 @@ class Api:
         self._window = None
         self.cancel_event = threading.Event()
         self.enable_cleanup = True
-        
+        self.ruta_lista_hp = None # Variable para almacenar ruta del CSV/Excel
         # Rutas constantes
         self.DIR_OUTPUTS = "outputs"
         self.DIR_MACAL = "propiedades_macal"
         self.DIR_HP_OUTPUT = "reporte_final_housepricing.json"
         self.DIR_HP_INPUT = "./input_pdfs"
         self.DIR_HP = "./house_pricing_outputs"
+
+    def seleccionar_archivo_lista_hp(self):
+        """Diálogo para seleccionar CSV o Excel para modo Automático."""
+        try:
+            file_types = ('Listas de Datos (*.csv;*.xlsx;*.xls)', 'Todos (*.*)')
+            archivos = self._window.create_file_dialog(
+                webview.OPEN_DIALOG, 
+                allow_multiple=False, 
+                file_types=file_types
+            )
+            
+            if not archivos:
+                return {'success': False, 'message': 'Selección cancelada.'}
+            
+            self.ruta_lista_hp = archivos[0]
+            nombre = os.path.basename(self.ruta_lista_hp)
+            
+            return {'success': True, 'filename': nombre}
+            
+        except Exception as e:
+            logger.error(f"Error seleccionando lista: {e}")
+            return {'success': False, 'message': str(e)}
 
     def set_window(self, window):
         """Asigna la instancia de la ventana de pywebview a la API."""
@@ -245,34 +267,44 @@ class Api:
             logger.error(f"Error seleccionando archivos: {e}")
             return {'success': False, 'message': str(e)}
 
-    def ejecutar_house_pricing(self):
-        """Dispara el main_hp.py en un hilo separado."""
+    def ejecutar_house_pricing(self, modo='auto'):
+        """Orquestador que recibe el modo desde el Frontend."""
         self.cancel_event.clear()
         
-        # Verificar si hay archivos
-        if not os.path.exists(self.DIR_HP_INPUT) or not os.listdir(self.DIR_HP_INPUT):
-            return {'success': False, 'message': 'No hay archivos cargados. Selecciona PDFs primero.'}
+        # Validaciones según modo
+        if modo == 'auto':
+            if not self.ruta_lista_hp or not os.path.exists(self.ruta_lista_hp):
+                 return {'success': False, 'message': 'Falta el archivo de lista (CSV/Excel).'}
+            ruta_para_proceso = self.ruta_lista_hp
+            
+        else: # modo == 'manual'
+            if not os.path.exists(self.DIR_HP_INPUT) or not os.listdir(self.DIR_HP_INPUT):
+                return {'success': False, 'message': 'No hay PDFs cargados en modo Manual.'}
+            ruta_para_proceso = None # Señal para que main_hp salte el Paso 0
 
-        logger.info("Iniciando orquestador HP...")
+        logger.info(f"Iniciando HP en modo: {modo}")
         
         try:
-            thread = threading.Thread(target=self._run_proceso_hp, daemon=True)
+            # Pasamos 'ruta_para_proceso' al hilo
+            thread = threading.Thread(
+                target=self._run_proceso_hp, 
+                args=(ruta_para_proceso,), 
+                daemon=True
+            )
             thread.start()
             return {'success': True, 'message': 'Proceso iniciado.'}
         except Exception as e:
             return {'success': False, 'message': f'Error al iniciar hilo: {e}'}
 
-    def _run_proceso_hp(self):
+    def _run_proceso_hp(self, ruta_lista):
         try:
-            # Aquí llamamos al main() de tu orquestador nuevo
-            # Nota: main_hp.main() lee de ./input_pdfs
-            # CORRECCIÓN: Pasar self.cancel_event
-            main_hp.main(self.cancel_event)
+            # Llamamos al main() actualizado que acepta ruta_lista
+            main_hp.main(self.cancel_event, ruta_lista=ruta_lista)
 
             if self.cancel_event.is_set():
                 self._enviar_js("actualizarHPStatus('⛔ Proceso cancelado.', 'warning')")
             else:
-                self._enviar_js("actualizarHPStatus('✅ Proceso masivo completado!', 'success')")
+                self._enviar_js("actualizarHPStatus('✅ Proceso completado exitosamente!', 'success')")
 
         except Exception as e:
             logger.error(f"Error fatal en HP: {e}")

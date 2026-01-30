@@ -18,15 +18,20 @@ logger = get_logger("paso1_hp", log_dir="logs", log_file="paso1_hp.log")
 def clean_money(text: str) -> int:
     if not text: return 0
     clean = re.sub(r'[^\d]', '', text)
-    return int(clean) if clean else 0
+    val = int(clean) if clean else 0
+    # logger.debug(f"Cleaning money: '{text}' -> {val}") # Comentado para no saturar, descomentar si hay dudas de montos
+    return val
 
 def clean_float(text: str) -> float:
     if not text: return 0.0
+    text_orig = text
     text = text.replace(',', '.')
     clean = re.sub(r'[^\d\.]', '', text)
     try:
-        return float(clean)
+        val = float(clean)
+        return val
     except:
+        logger.warning(f"⚠️ Fallo al convertir float: '{text_orig}' -> retornando 0.0")
         return 0.0
 
 def clean_text(text: str) -> str:
@@ -45,72 +50,85 @@ def map_roles_to_links(pdf_obj) -> Dict[str, str]:
     # Aumentemos un poco la tolerancia inicial a 35 por seguridad
     Y_SEARCH_DOWN = 35 
 
-    logger.info("--- INICIANDO MAPEO DE LINKS (DEBUG) ---")
+    logger.info("--- 📡 INICIANDO MAPEO DE LINKS (COORDENADAS) ---")
 
     for p_idx, page in enumerate(pdf_obj.pages):
-        # 1. Extraer palabras y links
-        words = page.extract_words()
-        links = page.hyperlinks
-        
-        logger.info(f"Página {p_idx + 1}: {len(links)} links encontrados.")
-
-        # Imprimir todos los links para ver si existen y dónde están
-        for i, l in enumerate(links):
-            l_top = l['top']
-            l_left = l['x0']
-            uri = l.get('uri', 'Sin URI')
-            logger.debug(f"  [Link #{i}] Top: {l_top:.2f} | Left: {l_left:.2f} | URI: {uri}")
-
-        # Filtramos solo las palabras que parecen Roles (ej: "9064-112")
-        rol_candidates = [w for w in words if re.match(r'^\d+-[\dKk]+$', w['text'])]
-
-        for word in rol_candidates:
-            rol_text = word['text']
-            word_bottom = word['bottom'] 
-            word_left = word['x0']
+        try:
+            logger.debug(f"📄 Procesando página {p_idx + 1} para mapeo de links...")
             
-            logger.debug(f"🔍 Analizando ROL '{rol_text}' (Bottom: {word_bottom:.2f}, Left: {word_left:.2f})")
+            # 1. Extraer palabras y links
+            words = page.extract_words()
+            links = page.hyperlinks
             
-            # Buscamos links candidatos
-            candidates = []
-            for link in links:
-                link_top = link['top']
-                link_left = link['x0']
-                
-                # CÁLCULOS
-                dist_vertical = link_top - word_bottom
-                dist_horizontal = abs(link_left - word_left)
-                
-                # LOG DE COMPARACIÓN
-                # Solo logueamos si está "cerca" para no ensuciar tanto
-                if -10 <= dist_vertical <= 100: 
-                    logger.debug(f"     -> vs Link ({link.get('uri')[:15]}...): Vert={dist_vertical:.2f}, Horiz={dist_horizontal:.2f}")
+            logger.info(f"   ↳ Página {p_idx + 1}: {len(links)} hipervínculos detectados | {len(words)} palabras detectadas.")
 
-                # CONDICIÓN 1: Vertical (Debe estar debajo, pero cerca)
-                # Permitimos un pequeño margen negativo (-2) por si se solapan ligeramente
-                is_below = -2 <= dist_vertical <= Y_SEARCH_DOWN
+            # Imprimir todos los links para ver si existen y dónde están
+            if links:
+                for i, l in enumerate(links):
+                    l_top = l['top']
+                    l_left = l['x0']
+                    uri = l.get('uri', 'Sin URI')
+                    # Solo debug profundo
+                    # logger.debug(f"    [Link #{i}] Top: {l_top:.2f} | Left: {l_left:.2f} | URI: {uri}")
+
+            # Filtramos solo las palabras que parecen Roles (ej: "9064-112")
+            rol_candidates = [w for w in words if re.match(r'^\d+-[\dKk]+$', w['text'])]
+            logger.debug(f"   ↳ Candidatos a Rol encontrados en pág {p_idx+1}: {len(rol_candidates)}")
+
+            for word in rol_candidates:
+                rol_text = word['text']
+                word_bottom = word['bottom'] 
+                word_left = word['x0']
                 
-                # CONDICIÓN 2: Horizontal (Alineación)
-                # Aumentamos tolerancia a 150 por si el link está centrado respecto a la columna y el rol alineado a la izquierda
-                is_aligned = dist_horizontal < 150
+                # logger.debug(f"🔍 Analizando ROL '{rol_text}' (Bottom: {word_bottom:.2f}, Left: {word_left:.2f})")
                 
-                if is_below and is_aligned:
-                    candidates.append(link)
-                    logger.info(f"     ✅ MATCH POTENCIAL: Distancia Vert: {dist_vertical:.2f}")
-            
-            # Si hay candidatos, elegimos el más cercano verticalmente
-            if candidates:
-                candidates.sort(key=lambda x: x['top'])
-                selected_link = candidates[0]['uri']
-                mapping[rol_text] = selected_link
-                logger.info(f"🎯 LINK ASIGNADO A {rol_text}: {selected_link}")
-            else:
-                logger.warning(f"⚠️ NO SE ENCONTRÓ LINK PARA {rol_text} (Revisar tolerancias)")
+                # Buscamos links candidatos
+                candidates = []
+                for link in links:
+                    link_top = link['top']
+                    link_left = link['x0']
                     
+                    # CÁLCULOS
+                    dist_vertical = link_top - word_bottom
+                    dist_horizontal = abs(link_left - word_left)
+                    
+                    # LOG DE COMPARACIÓN
+                    # Solo logueamos si está "cerca" para no ensuciar tanto
+                    if -10 <= dist_vertical <= 100: 
+                        pass
+                        # logger.debug(f"     -> vs Link ({link.get('uri')[:15]}...): Vert={dist_vertical:.2f}, Horiz={dist_horizontal:.2f}")
+
+                    # CONDICIÓN 1: Vertical (Debe estar debajo, pero cerca)
+                    # Permitimos un pequeño margen negativo (-2) por si se solapan ligeramente
+                    is_below = -2 <= dist_vertical <= Y_SEARCH_DOWN
+                    
+                    # CONDICIÓN 2: Horizontal (Alineación)
+                    # Aumentamos tolerancia a 150 por si el link está centrado respecto a la columna y el rol alineado a la izquierda
+                    is_aligned = dist_horizontal < 150
+                    
+                    if is_below and is_aligned:
+                        candidates.append(link)
+                        logger.debug(f"     ✅ MATCH POTENCIAL para {rol_text}: Distancia Vert: {dist_vertical:.2f}")
+                
+                # Si hay candidatos, elegimos el más cercano verticalmente
+                if candidates:
+                    candidates.sort(key=lambda x: x['top'])
+                    selected_link = candidates[0]['uri']
+                    mapping[rol_text] = selected_link
+                    logger.success(f"   🎯 LINK ASIGNADO A {rol_text} -> {selected_link}")
+                else:
+                    logger.debug(f"     ⚠️ Sin link cercano para {rol_text} (Revisar tolerancias)")
+        
+        except Exception as e:
+            logger.error(f"❌ Error mapeando links en página {p_idx + 1}: {e}")
+                    
+    logger.info(f"--- FIN MAPEO LINKS: {len(mapping)} roles mapeados ---")
     return mapping
 
 # --- LÓGICA DE EXTRACCIÓN PRINCIPAL ---
 def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> Dict[str, Any]:
+    logger.debug("🧠 Iniciando parseo de texto plano...")
+    
     data = {
         "ID_Propiedad": str(uuid.uuid4()), 
         "informacion_general": {},
@@ -130,6 +148,7 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
     }
 
     lines = full_text.split('\n')
+    logger.debug(f"   ↳ Total líneas extraídas: {len(lines)}")
     
     # --- 1. Extracción Estructural (Línea por Línea) ---
     for i, line in enumerate(lines):
@@ -144,8 +163,10 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
                     part = part.strip()
                     if re.match(r'^\d+-[\dKk]+$', part):
                         data["informacion_general"]["rol"] = part
+                        logger.info(f"   🏠 Rol Propiedad Detectado: {part}")
                     elif len(part) > 2 and not re.match(r'^\d+$', part):
                         data["informacion_general"]["comuna"] = part
+                        logger.debug(f"   📍 Comuna Detectada: {part}")
 
         # Propietario
         if line_clean == "Propietario":
@@ -153,6 +174,7 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
                 val = lines[i+1].strip()
                 if val:
                     data["informacion_general"]["propietario"] = val
+                    logger.debug(f"   👤 Propietario: {val}")
         
         # Dirección (Lógica de búsqueda por proximidad)
         if "informe" in line.lower() and "antecedentes" in line.lower():
@@ -163,10 +185,12 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
                 if any(kw in candidate for kw in ["Comuna", "Rol", "Propietario"]): break
                 if len(candidate) > 5 and re.search(r'\d', candidate):
                     data["informacion_general"]["direccion"] = candidate
+                    logger.debug(f"   🗺️ Dirección encontrada: {candidate}")
                     break
                     
         # Roles CBR
         if "Roles inscritos en CBR" in line:
+            logger.debug("   🔍 Analizando sección Roles CBR...")
             rol_line_index = -1
             for offset in range(1, 6): 
                 if i + offset < len(lines):
@@ -196,25 +220,30 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
                         "rol": rol_val,
                         "tipo": t_val
                     })
+                logger.info(f"   📚 Roles CBR extraídos: {len(data['roles_cbr'])}")
 
         # Construcciones
         match_cons = re.search(r'^(\d+)\s+(.+?)\s+(20\d{2})\s+([\d,.]+)\s+(.+)$', line.strip())
         if match_cons:
             try:
-                data["construcciones"].append({
+                const_obj = {
                     "nro": match_cons.group(1),
-                    "material": match_cons.group(2).strip(), # Simplificado para evitar errores
+                    "material": match_cons.group(2).strip(), 
                     "calidad": "", 
                     "anio": match_cons.group(3),
                     "m2": clean_float(match_cons.group(4)),
                     "destino": match_cons.group(5).strip()
-                })
-            except:
+                }
+                data["construcciones"].append(const_obj)
+                # logger.debug(f"   🏗️ Construcción detectada: {const_obj['anio']} - {const_obj['m2']}m2")
+            except Exception as e:
+                logger.warning(f"⚠️ Error parseando línea construcción '{line.strip()}': {e}")
                 pass 
 
     # --- 2. Regex Globales ---
 
     # Características
+    logger.debug("   ⚙️ Ejecutando Regex Globales (Características)...")
     patterns_carac = {
         "Tipo": r'Tipo\s+([A-Za-z\s]+?)(?=\n|$)', 
         "Destino": r'Destino\s+([A-Za-z\s]+?)(?=\n|$)',
@@ -235,6 +264,7 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
     
     # Ajuste M2
     if data["caracteristicas"].get("M2 Terreno", 0.0) == 0.0:
+        logger.debug("   ℹ️ M2 Terreno no detectado, usando M2 Construcción como fallback.")
         data["caracteristicas"]["M2 Terreno"] = data["caracteristicas"].get("M2 Construcción", 0.0)
 
     # Avalúo
@@ -250,6 +280,7 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
             data["avaluo"][key] = clean_money(match.group(1))
 
     # --- 3. DEUDAS (Integración con Mapa Espacial) ---
+    logger.debug("   💰 Buscando Deudas y cruzando con Link Map...")
     # Buscamos patrones de texto "Rol X $Monto"
     deuda_matches = re.findall(r'(Rol\s+(\d+-[\dKk]+))\s+(\$[\d\.]+)', full_text, re.IGNORECASE)
     seen_deudas = set()
@@ -266,6 +297,10 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
                 "link_tgr": found_link  # <--- Asignamos el link encontrado
             })
             seen_deudas.add(rol_full_str)
+            if found_link:
+                logger.success(f"     ✅ Deuda asociada a link: {rol_number} -> {monto_str}")
+            else:
+                logger.warning(f"     ⚠️ Deuda sin link encontrado: {rol_number}")
 
     # Transacción
     match_monto = re.search(r'Monto\s+(UF\s+[\d\.]+)', full_text)
@@ -283,7 +318,9 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
             vends = partes[1].strip().split('\n') if len(partes) > 1 else []
             data["transaccion"]["compradores"] = [c.replace('•', '').strip() for c in comps if c.strip()]
             data["transaccion"]["vendedores"] = [v.replace('•', '').strip() for v in vends if v.strip()]
-    except:
+            logger.debug(f"   👥 Transacción: {len(data['transaccion']['compradores'])} compradores / {len(data['transaccion']['vendedores'])} vendedores.")
+    except Exception as e:
+        logger.error(f"❌ Error parseando compradores/vendedores: {e}")
         pass
 
     # Información CBR
@@ -303,35 +340,40 @@ def parse_house_pricing_text(full_text: str, link_map: Dict[str, str] = {}) -> D
 
 # --- PROCESAMIENTO EN LOTE ---
 def procesar_lote_pdfs(carpeta_entrada: str, cancel_event) -> List[Dict[str, Any]]:
+    logger.info(f"🏁 Iniciando proceso de lote en: {carpeta_entrada}")
     resultados_json = []
     
     if not os.path.exists(carpeta_entrada):
-        logger.error(f"La carpeta {carpeta_entrada} no existe.")
+        logger.error(f"❌ La carpeta de entrada {carpeta_entrada} NO existe.")
         return []
 
     archivos = [f for f in os.listdir(carpeta_entrada) if f.lower().endswith(".pdf")]
-    logger.info(f"Paso 1: Se encontraron {len(archivos)} PDFs para procesar.")
+    logger.info(f"📂 Archivos encontrados: {len(archivos)}")
 
-    for archivo in archivos:
+    for idx, archivo in enumerate(archivos):
         if cancel_event.is_set():
-            logger.info("🛑 Proceso cancelado.")
+            logger.warning("🛑 Proceso cancelado por el usuario (Evento Cancel Set).")
             return []
 
         ruta_completa = os.path.join(carpeta_entrada, archivo)
+        logger.info(f"👉 [{idx+1}/{len(archivos)}] Procesando: {archivo}")
         
         try:
             full_text = ""
             link_mapping = {}
 
             with pdfplumber.open(ruta_completa) as pdf:
+                logger.debug(f"   📖 Abierto {archivo} con pdfplumber ({len(pdf.pages)} páginas)")
+                
                 # 1. Mapeo de Links (Coordenadas)
                 # Buscamos links DEBAJO de los roles antes de extraer el texto plano
                 link_mapping = map_roles_to_links(pdf)
                 
                 # 2. Extracción de Texto Completo
-                for page in pdf.pages:
+                for p_idx, page in enumerate(pdf.pages):
                     text = page.extract_text(layout=True)
                     if text: full_text += text + "\n"
+                    # logger.debug(f"   📄 Texto extraído pág {p_idx+1}")
 
             # 3. Parsing
             datos_extraidos = parse_house_pricing_text(full_text, link_map=link_mapping)
@@ -343,12 +385,13 @@ def procesar_lote_pdfs(carpeta_entrada: str, cancel_event) -> List[Dict[str, Any
             
             if datos_extraidos["informacion_general"].get("rol"):
                 resultados_json.append(datos_extraidos)
-                logger.info(f"✅ Procesado OK: {archivo}")
+                logger.success(f"✅ ÉXITO: {archivo} procesado y datos estructurados.")
             else:
-                logger.warning(f"⚠️ Datos insuficientes en {archivo}")
+                logger.warning(f"⚠️ DATOS PARCIALES: {archivo} procesado pero no se detectó ROL principal.")
 
         except Exception as e:
-            logger.error(f"❌ Error leyendo {archivo}: {e}")
+            logger.error(f"❌ FATAL: Error leyendo {archivo}. Excepción: {e}", exc_info=True)
             continue
 
+    logger.success(f"🎉 Proceso de lote finalizado. Total extraídos: {len(resultados_json)}")
     return resultados_json

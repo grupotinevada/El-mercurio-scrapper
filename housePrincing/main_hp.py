@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 # Importamos los módulos de lógica
-from housePrincing import paso1_hp, paso2_hp, paso3_hp
+from housePrincing import paso0_hp, paso1_hp, paso2_hp, paso3_hp
 from logger import get_logger
 
 # --- CONFIGURACIÓN ---
@@ -43,8 +43,28 @@ def cleanup_temp_files(cancel_event):
             logger.warning(f"   ⚠️ No se pudo eliminar {archivo}: {e}")
 
 # CORRECCIÓN: Agregar cancel_event
-def main(cancel_event):
+def main(cancel_event, ruta_lista=None):
     logger.info("=== INICIO DEL FLUJO DE TASACIÓN ===")
+
+    # ------------------------------------------------------------------
+    # PASO 0: Descarga Automática (Opcional)
+    # ------------------------------------------------------------------
+    if ruta_lista:
+        if cancel_event.is_set(): return
+        
+        logger.info(f">>> EJECUTANDO PASO 0: Descarga automática desde {ruta_lista}...")
+        
+        # Ejecuta la lógica de descarga (Selenium)
+        exito_paso0 = paso0_hp.ejecutar(ruta_lista, cancel_event)
+        
+        if not exito_paso0:
+            if cancel_event.is_set():
+                logger.warning("Proceso cancelado en Paso 0.")
+            else:
+                logger.error("❌ El Paso 0 falló o no se descargaron archivos. Abortando.")
+            return
+
+        logger.info("✅ Paso 0 completado. PDFs listos en carpeta de entrada.")
 
     # ------------------------------------------------------------------
     # PASO 1: Procesar PDFs

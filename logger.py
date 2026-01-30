@@ -5,23 +5,45 @@ import sys
 from datetime import datetime
 from colorama import Fore, Style, init
 
-init(autoreset=True)  # Inicializa colorama para colores en consola
-# logger.py
+init(autoreset=True)  # Inicializa colorama
+
 DEBUG_CONSOLE = True    # Desarrollo
+
+# --- 1. DEFINICIÓN DEL NIVEL PERSONALIZADO 'SUCCESS' ---
+# Python no tiene SUCCESS por defecto (INFO=20, WARNING=30). 
+# Lo definimos en 25 (entre INFO y WARNING).
+SUCCESS_LEVEL_NUM = 25
+logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
+
+def success(self, message, *args, **kws):
+    if self.isEnabledFor(SUCCESS_LEVEL_NUM):
+        self._log(SUCCESS_LEVEL_NUM, message, args, **kws)
+
+# "Inyectamos" el método success a la clase Logger para poder usar logger.success()
+logging.Logger.success = success
+logging.SUCCESS = SUCCESS_LEVEL_NUM
+
+# -------------------------------------------------------
 
 class ColoredFormatter(logging.Formatter):
     """Formatter que agrega colores según nivel de log en consola"""
     LEVEL_COLORS = {
-        logging.DEBUG: Fore.WHITE,
-        logging.INFO: Fore.CYAN,
-        logging.WARNING: Fore.YELLOW,
-        logging.ERROR: Fore.RED,
-        logging.CRITICAL: Fore.MAGENTA
+        logging.DEBUG: Fore.WHITE,       # Blanco (dim)
+        logging.INFO: Fore.CYAN,         # Cian
+        logging.SUCCESS: Fore.GREEN,     # Verde (NUEVO)
+        logging.WARNING: Fore.YELLOW,    # Amarillo
+        logging.ERROR: Fore.RED,         # Rojo
+        logging.CRITICAL: Fore.MAGENTA   # Magenta
     }
 
     def format(self, record):
+        # Si el nivel existe en nuestro dict, usamos su color, si no, blanco
         color = self.LEVEL_COLORS.get(record.levelno, Fore.WHITE)
+        
+        # Formateamos el mensaje base
         msg = super().format(record)
+        
+        # Devolvemos string coloreado + reset
         return f"{color}{msg}{Style.RESET_ALL}"
 
 def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
@@ -29,11 +51,6 @@ def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
 
     """
     Devuelve un logger configurado para archivo y consola con colores en consola.
-    - name: nombre del logger (usualmente __name__ del módulo que lo llama)
-    - log_dir: carpeta donde guardar el log
-    - log_file: nombre de archivo, si no se da se crea con timestamp
-    - level_console: nivel mínimo para consola
-    - level_file: nivel mínimo para archivo
     """
     os.makedirs(log_dir, exist_ok=True)
 
@@ -43,28 +60,34 @@ def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
     log_path = os.path.join(log_dir, log_file)
 
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)  # Siempre capturamos todo en el logger
+    logger.setLevel(logging.DEBUG)  # Capturamos todo a nivel raíz
+
+    # Definir nivel de consola por defecto
     if level_console is None:
         level_console = logging.DEBUG if DEBUG_CONSOLE else logging.INFO
-    # Evitar handlers duplicados
+
+    # Evitar duplicar handlers si get_logger se llama varias veces
     if logger.handlers:
-        for h in logger.handlers:
-            if isinstance(h, logging.StreamHandler):
-                h.setLevel(level_console)
+        # Opcional: Actualizar niveles si ya existe
         return logger
 
-    # Formato base
-    fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    formatter_file = logging.Formatter(fmt)
-    formatter_console = ColoredFormatter(fmt)
+    # --- FORMATOS ---
+    # En archivo: Fecha completa y nivel claro
+    fmt_file = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    formatter_file = logging.Formatter(fmt_file)
 
-    # Handler archivo
+    # En consola: Más limpio, con colores
+    fmt_console = "%(asctime)s | %(name)s | [%(levelname)s]     | %(message)s"
+    # Ajustamos el formato de fecha para consola (solo hora)
+    formatter_console = ColoredFormatter(fmt_console, datefmt="%H:%M:%S")
+
+    # --- HANDLER ARCHIVO ---
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setLevel(level_file)
     fh.setFormatter(formatter_file)
     logger.addHandler(fh)
 
-    # Handler consola
+    # --- HANDLER CONSOLA ---
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(level_console)
     ch.setFormatter(formatter_console)
@@ -75,7 +98,7 @@ def get_logger(name: str, log_dir: str = "logs", log_file: str = None,
 def log_section(logger: logging.Logger, name: str):
     """Marca una sección destacada en los logs"""
     logger.info("")
-    logger.info("="*12 + f" [{name}] " + "="*12)
+    logger.info("="*10 + f" [ {name} ] " + "="*10)
 
 def dbg(logger: logging.Logger, msg: str):
     """Función rápida para debug"""
