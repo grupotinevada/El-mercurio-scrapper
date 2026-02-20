@@ -92,15 +92,15 @@ def flujo_el_mercurio_santiago(url, paginas, columnas, cancel_event, progress_ca
     logger.info("=" * 20 + " INICIANDO PASO 2: LIMPIEZA DE TEXTO (SANTIAGO) " + "=" * 20)
     progress_callback(33.3, 'Etapa 2: Limpiando y separando texto...')
     
-    ruta_json_separado = paso2_copy.procesar_remates(cancel_event, ruta_txt_bruto)
+    ruta_json_separado = paso2_copy.procesar_remates(cancel_event, ruta_txt_bruto, region="santiago")
     
     return ruta_json_separado, ruta_txt_bruto
 
-# --- FLUJO 2: EL MERCURIO VALPARAÍSO (Nuevo flujo) ---
-# --- FLUJO 2: EL MERCURIO VALPARAÍSO ---
+
+# --- FLUJO 2: EL MERCURIO REGIONAL (Valparaiso, Antofagasta y Concepcion) ---
 def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, logger, region):
     """
-    Lógica compartida para diarios regionales (Valparaíso, Antofagasta y concepcion).
+    Lógica compartida para diarios regionales (Valparaíso, Antofagasta y Concepcion).
     Recibe el parámetro 'region' para diferenciar configuraciones.
     """
     logger.info(f"🟢 Iniciando flujo regional: El Mercurio de {region.capitalize()}")
@@ -155,7 +155,8 @@ def flujo_el_mercurio_regional(url, paginas, cancel_event, progress_callback, lo
     progress_callback(75, 'Etapa 4: Limpiando texto y revisión humana...')
 
     ruta_json_final = paso2_copy.procesar_remates(
-        cancel_event, 
+        cancel_event,
+        region,
         ruta_txt_ocr, 
         archivo_final=f"remates_{region}_temp.json" 
     )
@@ -177,6 +178,14 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
     ruta_json_separado = None
     ruta_txt_bruto = None
     region = "santiago"
+    
+    regions = {
+        "mercuriovalpo.cl": "valparaiso",
+        "mercurioantofagasta.cl": "antofagasta",
+        "australtemuco.cl": "temuco",
+        "estrellaiquique.cl": "iquique"
+    }
+
     try:
         # 1. ENRUTAMIENTO INTELIGENTE
         if "digital.elmercurio.com" in url:
@@ -185,16 +194,9 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
                 url, paginas, columnas, cancel_event, progress_callback, logger
             )
         
-        elif any(domain in url for domain in ["mercuriovalpo.cl", "mercurioantofagasta.cl", "elsur.cl"]):
-            # ---> Flujo Regional (Valpo / Antofa / El Sur)
-            
-            # Determinamos la región
-            if "mercuriovalpo.cl" in url:
-                region = "valparaiso"
-            elif "mercurioantofagasta.cl" in url:
-                region = "antofagasta"
-            else:
-                region = "concepcion" # Identificador para El Sur
+        elif any(domain in url for domain in ["mercuriovalpo.cl", "mercurioantofagasta.cl", "elsur.cl", "australtemuco.cl", "estrellaiquique.cl"]):
+
+            region = next((r for k, r in regions.items() if k in url), "concepcion")
             
             ruta_json_separado, ruta_txt_bruto = flujo_el_mercurio_regional(
                 url, paginas, cancel_event, progress_callback, logger, region
@@ -206,7 +208,10 @@ def orquestador_con_datos(url, paginas, columnas, cancel_event, enable_cleanup, 
             
         else:
             logger.error(f"URL no reconocida: {url}")
-            raise Exception("La URL no corresponde a un diario soportado (Santiago o Valparaíso).")
+            raise Exception(
+                f"La URL no corresponde a un diario soportado. Regiones soportadas: {', '.join(regions.keys())}."
+            )
+
 
         # 2. VERIFICACIÓN DE ESTADO
         if cancel_event.is_set():

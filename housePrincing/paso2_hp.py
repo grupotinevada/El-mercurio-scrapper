@@ -328,7 +328,7 @@ def _buscar_propiedad_individual(driver, wait, comuna_nombre, tipo_target, rol_t
     return datos_retorno
 
 # ==============================================================================
-# NUEVO: WORKER ESTANDARIZADO (CADA WORKER TIENE SU NAVEGADOR)
+# WORKER ESTANDARIZADO (CADA WORKER TIENE SU NAVEGADOR)
 # ==============================================================================
 def procesar_lote_worker(id_worker, sublista_propiedades, cancel_event):
     """

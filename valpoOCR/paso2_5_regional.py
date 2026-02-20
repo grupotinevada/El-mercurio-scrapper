@@ -130,29 +130,30 @@ def detectar_1612_concepcion(img, patron_inicio, logger): #VOLVEMOS AL INICIO PO
     # Retornamos la imagen original en caso de fallo
     return False, 0, img
 
-def detectar_1312_antofagasta(img, patron_inicio, logger):
+def detectar_1312_antofagasta(img, patron_inicio, logger, region):
     """
     Mantiene el flujo original probado para Valparaíso y Antofagasta.
     Usa PSM 6 para bloques de texto uniforme.
     """
+    logger.debug(f"🔍 [detectar 1312 antofagasta] region: {region}")
     config = '--psm 6'
     try:
-        logger.debug(f"🔍 [OCR VALPO] Iniciando detección con patrón: {patron_inicio.pattern}")
+        logger.debug(f"🔍 [OCR ANTO] Iniciando detección con patrón: {patron_inicio.pattern}")
         data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, config=config)
         texto_completo = pytesseract.image_to_string(img, config=config)
         
         # DEBUG: Ver los primeros 100 caracteres del OCR
-        logger.debug(f"📄 [OCR VALPO] Texto bruto: {texto_completo.strip()[:100].replace('\n', ' ')}...")
+        logger.debug(f"📄 [OCR ANTO] Texto bruto: {texto_completo.strip()[:100].replace('\n', ' ')}...")
         
         match = patron_inicio.search(texto_completo)
         
         if match:
-            logger.debug(f"🎯 [OCR VALPO] Match encontrado: '{match.group()}'")
+            logger.debug(f"🎯 [OCR ANTO] Match encontrado: '{match.group()}'")
             y_corte = 0
-            for j in range(len(data['text'])):
+            for j in range(len(data['text'])): 
                 if patron_inicio.search(data['text'][j]):
                     y_corte = data['top'][j]
-                    logger.debug(f"📍 [OCR VALPO] Coordenada Y de corte: {y_corte}")
+                    logger.debug(f"📍 [OCR ANTO] Coordenada Y de corte: {y_corte}")
                     break
             # Retornamos la imagen original sin cambios
             return True, y_corte, img
@@ -161,9 +162,86 @@ def detectar_1312_antofagasta(img, patron_inicio, logger):
     # Retornamos la imagen original en caso de fallo
     return False, 0, img
 
+def detectar_1312_iquique(img, patron_inicio, logger, region):
+    """
+    Estrategia de Micro-Cirugía Espacial para Iquique.
+    1. Busca "REMATES" en la imagen normal.
+    2. Recorta un pequeño parche a la izquierda de cada "REMATES".
+    3. Invierte el color solo de ese parche y busca el código "1312".
+    """
+    logger.debug(f"🔍 [detectar 1312 iquique] region: {region}")
+    
+    try:
+        # --- PASO 1: LECTURA NORMAL (Buscando "Remates") ---
+        logger.debug(f"🔍 [OCR IQQ] Paso 1: Buscando anclas 'Remates'...")
+        data_norm = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, config='--psm 6')
+        
+        candidatos_remates = []
+        for i in range(len(data_norm['text'])):
+            palabra = data_norm['text'][i].strip().upper()
+            if "REMATE" in palabra: # Captura REMATE o REMATES
+                x = data_norm['left'][i]
+                y = data_norm['top'][i]
+                w = data_norm['width'][i]
+                h = data_norm['height'][i]
+                candidatos_remates.append((x, y, w, h))
+                logger.debug(f"   📍 Ancla 'Remates' en X:{x}, Y:{y}")
 
-# CORRECCIÓN: Agregar cancel_event
-# CORRECCIÓN: Agregar cancel_event
+        if not candidatos_remates:
+            logger.debug("❌ [OCR IQQ] No se encontraron anclas 'Remates'.")
+            return False, 0, img
+
+        # --- PASO 2: MICRO-CIRUGÍA (Buscando "1312" a la izquierda) ---
+        logger.debug(f"✂️ [OCR IQQ] Paso 2: Analizando parches invertidos...")
+        
+        alto_img, ancho_img = img.shape[:2]
+
+        for x_rem, y_rem, w_rem, h_rem in candidatos_remates:
+            # Definimos el tamaño del "parche" a la izquierda de la palabra Remates
+            # Asumimos que el código 1312 está justo a la izquierda.
+            ancho_parche = 120 # Píxeles hacia la izquierda a revisar
+            alto_parche = max(30, int(h_rem * 1.5)) # Un poco más alto que la palabra para asegurar
+            
+            # Coordenadas del parche (evitando salirnos de los bordes de la imagen)
+            x_inicio = max(0, x_rem - ancho_parche)
+            y_inicio = max(0, y_rem - int(h_rem * 0.25)) # Subimos un poquito el Y inicial
+            
+            x_fin = x_rem
+            y_fin = min(alto_img, y_inicio + alto_parche)
+            
+            # Si el parche es muy angosto (ej. Remates estaba pegado al borde izquierdo), lo saltamos
+            if (x_fin - x_inicio) < 20:
+                continue
+
+            # 1. Extraemos el parche
+            parche = img[y_inicio:y_fin, x_inicio:x_fin]
+            
+            # 2. Invertimos los colores del parche
+            parche_invertido = cv2.bitwise_not(parche)
+            
+            # 3. Leemos solo ese parche. Usamos PSM 7 (Una sola línea de texto) o PSM 8 (Una sola palabra)
+            logger.debug(f"   🔍 Leyendo parche invertido en Y:{y_inicio}...")
+            texto_parche = pytesseract.image_to_string(parche_invertido, config='--psm 7').strip()
+            
+            # 4. Verificamos si el patrón (1312) está en el texto del parche
+            match = patron_inicio.search(texto_parche)
+            
+            if match:
+                logger.info(f"🎯 [OCR IQQ] ¡MATCH PERFECTO! Código '{match.group()}' encontrado a la izquierda de 'Remates' en Y:{y_rem}")
+                # Devolvemos la coordenada Y de la palabra "Remates" (o del parche, están al mismo nivel)
+                # y la imagen original intacta
+                return True, y_inicio, img
+            else:
+                logger.debug(f"   ❌ Parche limpio, sin código. (Texto leído: '{texto_parche}')")
+
+        logger.debug("❌ [OCR IQQ] Ningún ancla tenía el código 1312 a su izquierda.")
+        return False, 0, img
+
+    except Exception as e:
+        logger.error(f"Error en micro-cirugía Iquique: {e}")
+        
+    return False, 0, img
+
 def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
 
     logger.info(f"🕵️ Iniciando Paso 2.5: Filtrado Regional ({region.upper()})")
@@ -178,9 +256,11 @@ def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
     
     # CORRECCIÓN 1: Regex arreglado (sin el pipe '|' al final)
     CODIGOS_INICIO = {
-        "valparaiso": r'(1612|I612|l6l2)',
-        "antofagasta": r'(1312|I312|l3l2)',
-        "concepcion": r'(1612|I612|l6l2|1512)' 
+        "valparaiso": r'(1612|I612|l6l2)', # Código estándar para Mercurio Valparaíso
+        "antofagasta": r'(1312|I312|l3l2)', # Código estándar para Mercurio Antofagasta
+        "concepcion": r'(1612|I612|l6l2|1512)', # Código estándar para El sur concepcion
+        "temuco": r'(1612|I612|l6l2)',# Código estándar para El Austral temuco
+        "iquique": r'(1312|I312|l3l2)'  # Código estándar para La estrella Iquique
     }
     
     codigo_reg_busqueda = CODIGOS_INICIO.get(region, r'1612')
@@ -229,7 +309,11 @@ def ejecutar_filtrado(diccionario_paginas, region, cancel_event):
                 if region == "concepcion":
                     detectado, y_corte, img_procesada = detectar_1612_concepcion(img, patron_inicio, logger)
                 elif region == "antofagasta":
-                    detectado, y_corte, img_procesada = detectar_1312_antofagasta(img, patron_inicio, logger)
+                    detectado, y_corte, img_procesada = detectar_1312_antofagasta(img, patron_inicio, logger, region)
+                elif region == "iquique":
+                    detectado, y_corte, img_procesada = detectar_1312_iquique(img, patron_inicio, logger, region)
+                elif region == "temuco":
+                    detectado, y_corte, img_procesada = detectar_1612_valparaiso(img, patron_inicio, logger)
                 else:
                     detectado, y_corte, img_procesada = detectar_1612_valparaiso(img, patron_inicio, logger)
 

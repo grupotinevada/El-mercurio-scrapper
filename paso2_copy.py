@@ -57,6 +57,49 @@ CLAVES_SEPARADORES = [
     r"CUARTO\s+REMATE\s+P[ÚU]BLICO[,;]?\s*NUEVO"
 ]
 
+CLAVES_SEPARADORES_IQQ = [
+    r"REMATE",
+    r"EXTRACTO",
+    r"Extracto",
+    r"JUZGADO\s+DE\s+POLIC[ÍI]A\s+LOCAL",
+    r"JUZGADO\s+DE\s+LETRAS",
+    r"JUEZ\s+ARBITRO",
+    r"LICITACI[ÓO]N\s+REMATE",
+    r"EN\s+JUICIO\s+PARTICI[ÓO]N",
+    r"OFERTA\s+REMATE",
+    r"VENTA\s+EN\s+REMATE",
+    r"ANTE\s+EL\s+\d{1,2}°?\s+JUZGADO\s+CIVIL",
+    r"\d{1,2}°?\s+JUZGADO\s+CIVIL",
+    r"VIG[ÉE]SIMO",
+    r"D[ÉE]CIMO",
+    r"EN\s+CAUSA\s+ROL",
+    r"JUEZ\s+PARTIDOR\s+DON\s+[A-ZÁÉÍÓÚÑ]+",
+    r"REMATE,\s+ANTE\s+JUEZ\s+PARTIDOR",
+    r"REMATE:\s+VIG[ÉE]SIMO\s+JUZGADO\s+CI",
+    r"REMATE\s+ANTE\s+JUEZ\s+ARBITRO,?",
+    r"REMATE[.,]?\s+VIG[ÉE]SIMO\s+SEGUNDO\s+JUZGADO",
+    r"JUEZ\s+PARTIDOR\s+[A-ZÁÉÍÓÚÑ]+",
+    r"SEGUNDO\s+REMATE\s+PARTICI[ÓO]N",
+    r"ANTE\s+JUEZ\s+PARTIDOR",
+    r"INMUEBLE\s+COMUNA\s+QUILL[ÓO]N\.[A-ZÁÉÍÓÚÑ]",
+    r"LICITACI[ÓO]N\s+REMATE\.\s+CONVENIO",
+    r"CON\s+FECHA\s+.*HORAS",
+    r"\d°?\s+JUZGADO\s+DE\s+LETRAS\s+DE\s+SAN\s+B",
+    r"ANTE\s+JUEZ\s+[ÁA]RBITRO\s+LIQUIDADOR",
+    r"REMATE:\s+SEGUNDO\s+JUZGADO\s+CI",
+    r"UNDECIMO\s+JUZGADO\s+CIVIL\s+SAN",
+    r"ÁRBITRO\s+PARTIDOR\s+IVÁN\s+MOSCOSO",
+    r"(JUEZ|ÁRBITRO)\s+PARTIDOR\s+(DON\s+)?[A-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ]+)*",
+    r"(?:\d{1,2}|PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|SÉPTIMO|OCTAVO|NOVENO|DÉCIMO|UNDÉCIMO|DUODÉCIMO)\s+JUZGADO\s+CIVIL(?:\s+[A-ZÁÉÍÓÚÑ]+)?",
+    r"(REMATE|LICITACI[ÓO]N\s+REMATE|OFERTA\s+REMATE|VENTA\s+EN\s+REMATE)",
+    r"JUEZ\s+[ÁA]RBITRO\s+[A-ZÁÉÍÓÚÑ\s]+",
+    r"REMATE\s+ANTE\s+JUEZ\s+PARTIDOR",
+    r"VIG[ÉE]SIMO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|S[ÉE]PTIMO|OCTAVO|NOVENO)\s+JUZGADO\s+CIVIL",
+    r"NOTIFICACI[ÓO]N[.:]?\s+VIG[ÉE]SIMO\s+S[ÉE]PTIMO",
+    r"\bPARTIDOR\b",
+    r"CUARTO\s+REMATE\s+P[ÚU]BLICO[,;]?\s*NUEVO"
+]
+
 
 def recortar_remates(texto: str):
     """
@@ -139,12 +182,16 @@ def separador_inteligente(match: re.Match) -> str:
         return match_completo
 
 
-def pre_separar_remates_fusionados(texto: str) -> str:
+def pre_separar_remates_fusionados(texto: str, region) -> str:
     """
     Busca patrones de remates fusionados y los separa de forma segura.
     """
-    logger.debug("Buscando y separando remates fusionados...")
-
+    logger.debug(f"Buscando y separando remates fusionados para {region}...")
+    if region == "iquique":
+        CLAVES_SEPARADORES = CLAVES_SEPARADORES_IQQ
+    else:
+        CLAVES_SEPARADORES = CLAVES_SEPARADORES
+    
     bloque_manual = [
         r"REMATE\b",
         r"REMATE[:.]?",
@@ -218,8 +265,13 @@ def limpiar_encabezados(texto: str, cancel_event) -> str:
     return texto
 
 
-def insertar_separadores(texto: str) -> str:
+def insertar_separadores(texto: str, region) -> str:
     logger.debug("Insertando separadores entre avisos...")
+    if region == "iquique":
+        CLAVES_SEPARADORES = CLAVES_SEPARADORES_IQQ
+    else:
+        CLAVES_SEPARADORES = CLAVES_SEPARADORES
+
     patron_frases = "|".join(CLAVES_SEPARADORES)
     patron_separador = rf"""
         \n
@@ -275,22 +327,23 @@ def extraer_parrafos_remates(texto: str, cancel_event) -> List[str]:
 
 def limpiar_encabezados_y_guardar(
     cancel_event,
+    region,
     input_path: str,
     output_path: str = "remates_limpio.txt"
 ) -> str:
-    logger.info(f"Iniciando limpieza de encabezados para: {input_path}")
+    logger.info(f"Iniciando limpieza de encabezados para: {input_path} para {region}")
     with open(input_path, "r", encoding="utf-8") as f:
         texto = f.read()
     
     texto_cortado = recortar_remates(texto) 
-    
+    region = region
     # CORRECCIÓN: Pasar cancel_event
     texto_limpio = limpiar_encabezados(texto_cortado, cancel_event)
     if texto_limpio is None: return None # Check de cancelación
 
     texto_clean = limpieza(texto_limpio)
-    texto_pre_separado = pre_separar_remates_fusionados(texto_clean)
-    texto_final = insertar_separadores(texto_pre_separado)
+    texto_pre_separado = pre_separar_remates_fusionados(texto_clean, region)
+    texto_final = insertar_separadores(texto_pre_separado, region)
     #texto_final = limpieza(texto_separado) 
 
     if output_path:
@@ -353,16 +406,15 @@ def filtrar_remates_inmuebles(lista_remates: List[dict], cancel_event) -> tuple[
     logger.info(f"📊 Resultado Filtrado: {len(validos)} Inmuebles válidos | {len(descartados)} Descartados (No inmuebles)")
     return validos, descartados
 
-def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remates_separados.json") -> str:
-    logger.info(f"Procesando archivo de remates: {input_path}")
+def procesar_remates(cancel_event, region, input_path: str, archivo_final: str = "remates_separados.json") -> str:
+    logger.info(f"Procesando archivo de remates: {input_path} para {region}")
     
     # 1. Limpieza y Texto Plano
-    texto_limpio = limpiar_encabezados_y_guardar(cancel_event, input_path, output_path="remates_limpio.txt")
+    texto_limpio = limpiar_encabezados_y_guardar(cancel_event,region, input_path, output_path="remates_limpio.txt")
     if cancel_event.is_set() or texto_limpio is None:
         return None
     
     # 2. Extracción de Párrafos
-    # CORRECCIÓN: Pasar cancel_event
     parrafos = extraer_parrafos_remates(texto_limpio, cancel_event)
     if cancel_event.is_set() or parrafos is None:
         return None
@@ -373,7 +425,6 @@ def procesar_remates(cancel_event, input_path: str, archivo_final: str = "remate
     lista_cruda = [{"id_remate": i, "remate": p.strip()} for i, p in enumerate(parrafos, 1)]
     
     # 4. FILTRADO (NUEVO)
-    # CORRECCIÓN: Pasar cancel_event
     resultado_filtrado = filtrar_remates_inmuebles(lista_cruda, cancel_event)
     if resultado_filtrado is None or resultado_filtrado[0] is None:
         return None

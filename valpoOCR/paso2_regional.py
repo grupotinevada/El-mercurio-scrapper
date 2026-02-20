@@ -75,9 +75,15 @@ def procesar_remates_valpo(cancel_event, entrada_datos, region):
             if region_key == "antofagasta":
                 # Lógica para Antofagasta
                 recortes_generados = _pipeline_antofagasta(ruta_img, output_folder, logger, cancel_event)
+            elif region_key == "iquique":
+                # Lógica para Iquique
+                recortes_generados = _pipeline_iquique(ruta_img, output_folder, logger, cancel_event)
             elif region_key == "concepcion":
-                # Lógica nueva integrada para Concepción (Pipeline con 3 pasos de seguridad + Footer)
+                # Lógica nueva integrada para Concepción
                 recortes_generados = _pipeline_concepcion(ruta_img, output_folder, logger, cancel_event)
+            elif region_key == "temuco":
+                # Lógica para El Austral de Temuco (Reutiliza pipeline estándar de Valparaíso)
+                recortes_generados = _pipeline_valparaiso(ruta_img, output_folder, logger, cancel_event) # Reutiliza pipeline estándar de Valparaíso
             else:
                 # Lógica original (Valparaíso / Default)
                 recortes_generados = _pipeline_valparaiso(ruta_img, output_folder, logger, cancel_event)
@@ -150,6 +156,28 @@ def eliminar_leyenda_header(imagen_bgr):
                 cv2.rectangle(img_out, (x, y_nuevo), (x+w, y+h), (255, 255, 255), -1)
                 
     return img_out
+
+def eliminar_encabezados_geometricos(imagen_bgr):
+    """
+    NUEVA FUNCIÓN: Detecta y tapa encabezados geométricamente (franjas horizontales)
+    en la mitad superior de la página antes de que el pipeline lea el texto.
+    """
+    img_limpia = imagen_bgr.copy()
+    alto_img, ancho_img = img_limpia.shape[:2]
+    
+    gray = cv2.cvtColor(img_limpia, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    
+    kernel_header = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 10)) 
+    dilated = cv2.dilate(binary, kernel_header, iterations=2)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if y < (alto_img * 0.4) and w > (h * 3) and w > 400:
+            cv2.rectangle(img_limpia, (x, y), (x+w, y+h), (255, 255, 255), -1)
+            
+    return img_limpia
 
 def eliminar_footer_inferior(imagen_bgr):
     """
@@ -365,7 +393,7 @@ def _pipeline_valparaiso(ruta_img, output_folder, logger, cancel_event):
 
 
 # ==========================================
-# PIPELINE NUEVO (ANTOFAGASTA)
+# PIPELINE (ANTOFAGASTA)
 # ==========================================
 
 def _pipeline_antofagasta(ruta_img, output_folder, logger, cancel_event):
@@ -488,7 +516,7 @@ def _pipeline_antofagasta(ruta_img, output_folder, logger, cancel_event):
 
 
 # ==========================================
-# PIPELINE NUEVO (CONCEPCIÓN - 3 Pasos de Seguridad)
+# PIPELINE (CONCEPCIÓN - 3 Pasos de Seguridad)
 # ==========================================
 
 def _pipeline_concepcion(ruta_img, output_folder, logger, cancel_event):
@@ -632,6 +660,128 @@ def _pipeline_concepcion(ruta_img, output_folder, logger, cancel_event):
         if len(cols) > 0:
             for i_col, col_img in enumerate(cols):
                 col_filename = f"{base_name}_conc_blk{i_blk}_col{i_col}.jpg"
+                col_path = os.path.join(output_folder, col_filename)
+                cv2.imwrite(col_path, col_img)
+                rutas_columnas_guardadas.append(col_path)
+
+    return rutas_columnas_guardadas
+
+# ==========================================
+# PIPELINE (IQUIQUE)
+# ==========================================
+
+def _pipeline_iquique(ruta_img, output_folder, logger, cancel_event):
+    """
+    Pipeline específico para Iquique:
+    Mismo flujo robusto de Antofagasta, pero elimina encabezados conflictivos
+    geométricamente antes del procesamiento de OCR.
+    """
+    # Params
+    p_borrado = 10
+    p_ocr = 10
+    h_factor = 0.65
+    h_gap = 30
+    r_activar = True
+    r_sens = 0.10
+    
+    keywords_positivas = ["REMATE", "JUZGADO", "EXTRACTO", "JUDICIAL", "PRIMER", "SEGUNDO", "TERCER"]
+    keywords_negativas = ["NECROLOGICOS", "FUNEBRES", "CONDOLENCIAS", "DEFUNCIONES", "IN MEMORIAM"]
+
+    img = cv2.imread(ruta_img)
+    if img is None: 
+        logger.error(f"Ruta inválida: {ruta_img}")
+        return []
+
+    # >>> FILTRADO GEOMÉTRICO PREVIO (Exclusivo Iquique) <<<
+    img = eliminar_encabezados_geometricos(img)
+
+    # === PASO 1: PREPARACIÓN ===
+    img_filtrada = img.copy()
+    img_salida = np.full_like(img, 255) # Lienzo blanco
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    kernel_grueso = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 12)) 
+    dilated = cv2.dilate(binary, kernel_grueso, iterations=2)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    bloques_validos_coords = []
+    area_detectada = False
+
+    # === PASO 2: FILTRADO DE BLOQUES ===
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if w < 250 or h < 250: 
+            cv2.rectangle(img_filtrada, (x, y), (x+w, y+h), (255, 255, 255), -1)
+            continue
+
+        roi = gray[y:y+h, x:x+w]
+        try:
+            texto_val = pytesseract.image_to_string(roi, config='--psm 3').upper()
+        except:
+            texto_val = ""
+        
+        found_pos = [k for k in keywords_positivas if k in texto_val]
+        found_neg = [k for k in keywords_negativas if k in texto_val]
+
+        # Lógica de Conflicto
+        if found_pos and found_neg:
+            roi_bin = binary[y:y+h, x:x+w]
+            kernel_bisturi = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
+            roi_dilated = cv2.dilate(roi_bin, kernel_bisturi, iterations=2)
+            sub_contours, _ = cv2.findContours(roi_dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for sub_c in sub_contours:
+                sx, sy, sw, sh = cv2.boundingRect(sub_c)
+                gx, gy = x + sx, y + sy 
+                sub_roi = gray[gy:gy+sh, gx:gx+sw]
+                sub_texto = pytesseract.image_to_string(sub_roi, config='--psm 3').upper()
+                sub_found_pos = [k for k in keywords_positivas if k in sub_texto]
+                
+                if sub_found_pos:
+                    bloques_validos_coords.append((gx, gy, sw, sh))
+                    area_detectada = True
+                else:
+                    cv2.rectangle(img_filtrada, (gx, gy), (gx+sw, gy+sh), (255, 255, 255), -1)
+
+        elif found_pos and not found_neg:
+            bloques_validos_coords.append((x, y, w, h))
+            area_detectada = True
+        else:
+            cv2.rectangle(img_filtrada, (x, y), (x+w, y+h), (255, 255, 255), -1)
+
+    if not area_detectada:
+        logger.debug("No se encontraron bloques válidos (Pipeline Iquique).")
+        return []
+
+    # === PASO 3: TRASPASO AL LIENZO FINAL ===
+    for (x, y, w, h) in bloques_validos_coords:
+        img_salida[y:y+h, x:x+w] = img_filtrada[y:y+h, x:x+w]
+
+    # === PASO 4: PROCESAMIENTO FINAL Y GUARDADO ===
+    rutas_columnas_guardadas = []
+    base_name = os.path.splitext(os.path.basename(ruta_img))[0]
+    
+    # Ordenamos bloques por Y para mantener orden de lectura
+    bloques_validos_coords = sorted(bloques_validos_coords, key=lambda b: b[1])
+
+    for i_blk, (x, y, w, h) in enumerate(bloques_validos_coords):
+        if cancel_event.is_set(): return None
+
+        bloque_final = img_salida[y:y+h, x:x+w]
+        
+        # 1. Eliminar Leyenda 
+        bloque_final = eliminar_leyenda_header(bloque_final)
+        
+        # 2. Limpieza Previa
+        limpio = fase2_limpieza_previa(bloque_final, p_borrado)
+        
+        # 3. Segmentación
+        cols, _, _, _, _ = fase1_segmentar_columnas_completo(limpio, p_ocr, h_factor, h_gap, r_activar, r_sens)
+        
+        if len(cols) > 0:
+            for i_col, col_img in enumerate(cols):
+                col_filename = f"{base_name}_iqi_blk{i_blk}_col{i_col}.jpg"
                 col_path = os.path.join(output_folder, col_filename)
                 cv2.imwrite(col_path, col_img)
                 rutas_columnas_guardadas.append(col_path)
